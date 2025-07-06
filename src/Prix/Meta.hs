@@ -4,7 +4,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 -- | This module provides project metadata information definitions.
-module Hebele.Meta where
+module Prix.Meta where
 
 import Data.Aeson (ToJSON (toEncoding))
 import qualified Data.Aeson as Aeson
@@ -15,24 +15,24 @@ import qualified Data.Time as Time
 import Data.Version (Version, showVersion)
 import qualified GitHash as Githash
 import qualified Language.Haskell.TH as TH
-import qualified Paths_haskell_template_hebele as Paths
+import qualified Paths_prix as Paths
 import qualified System.Info
 
 
 -- | Application name.
 --
 -- >>> name
--- "haskell-template-hebele"
+-- "prix"
 name :: T.Text
-name = "haskell-template-hebele"
+name = "prix"
 
 
 -- | Application title.
 --
 -- >>> title
--- "Haskell Project Template"
+-- "Value-First Work Planning"
 title :: T.Text
-title = "Haskell Project Template"
+title = "Value-First Work Planning"
 
 
 -- | Application version.

@@ -1,5 +1,5 @@
 {
-  description = "Haskell Project Template";
+  description = "prix - Value-First Work Planning";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-25.05";

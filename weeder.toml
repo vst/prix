@@ -1,8 +1,8 @@
 roots = [
   ## Definitions we always need:
   "^Main.main$",
-  "^Hebele.Cli.*$",
-  "^Paths_haskell_template_hebele.*",
+  "^Prix.Cli.*$",
+  "^Paths_prix.*",
 
   ## Temporary suspensions:
   "^Zamazingo.*",

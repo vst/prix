@@ -18,7 +18,7 @@ GHC_VERSION="9.8.4"
 DOCKER_IMAGE="quay.io/benz0li/ghc-musl:${GHC_VERSION}"
 
 ## Executable name:
-EXECUTABLE_NAME="haskell-template-hebele"
+EXECUTABLE_NAME="prix"
 
 ## Get the kernel name:
 FINAL_KERNEL_NAME="$(docker run "${docker_run_opts[@]}" --rm "${DOCKER_IMAGE}" uname --kernel-name)"

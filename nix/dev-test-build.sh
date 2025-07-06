@@ -139,7 +139,7 @@ _cabal_build() {
 _cabal_run() {
     _print_header "cabal run (v$("${_cabal}" --numeric-version))"
     _start=$(_get_now)
-    chronic -- "${_cabal}" run -O0 haskell-template-hebele -- --version
+    chronic -- "${_cabal}" run -O0 prix -- --version
     _print_success "${_start}" "$(_get_now)"
 }
 
