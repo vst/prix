@@ -2,6 +2,7 @@
 *~
 /.direnv
 /.envrc
+/config.yaml
 /dist
 /dist-newstyle
 /result

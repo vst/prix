@@ -3,15 +3,17 @@
 -- | This module provides top-level definitions for the CLI program.
 module Prix.Cli where
 
-import Control.Applicative ((<**>), (<|>))
-import Control.Monad (join)
+import Control.Applicative ((<**>))
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Lazy.Char8 as BLC
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Options.Applicative as OA
+import qualified Path.IO as PIO
+import Prix.Config (Config (..), ConfigProjects (..), readConfig, readConfigFromFile)
 import qualified Prix.Meta as Meta
-import System.Exit (ExitCode (..))
+import Prix.Project (IterationQuery, iterationQueryParser, queryIteration)
+import System.Exit (ExitCode (..), die)
 
 
 -- * Entrypoint
@@ -20,9 +22,9 @@ import System.Exit (ExitCode (..))
 -- | CLI program entrypoint.
 cli :: IO ExitCode
 cli =
-  join (OA.execParser (OA.info opts desc))
+  OA.execParser (OA.info opts desc) >>= runOptions
   where
-    opts = optProgram <**> infoOptVersion <**> OA.helper
+    opts = optionsParser <**> infoOptVersion <**> OA.helper
     desc =
       OA.fullDesc
         <> OA.progDesc "Top Level Commands"
@@ -30,50 +32,95 @@ cli =
         <> infoModFooter
 
 
--- * Program
+-- * Options and Commands
 
 
--- | Option parser for top-level commands.
-optProgram :: OA.Parser (IO ExitCode)
-optProgram =
-  commandGreet
-    <|> commandVersion
+-- | CLI options and commands.
+data Options = MkOptions
+  { optionsConfig :: !(Maybe FilePath)
+  , optionsCommand :: !Command
+  }
+  deriving (Show, Eq)
 
 
--- * Commands
+optionsParser :: OA.Parser Options
+optionsParser =
+  MkOptions
+    <$> OA.optional (OA.strOption (OA.long "config" <> OA.short 'c' <> OA.metavar "FILE" <> OA.help "Path to configuration file"))
+    <*> commandsParser
 
 
--- ** greet
+-- | CLI commands.
+data Command
+  = CommandVersion Bool
+  | CommandProject !ProjectCommand
+  deriving (Show, Eq)
 
 
--- | Definition for @greet@ CLI command.
-commandGreet :: OA.Parser (IO ExitCode)
-commandGreet = OA.hsubparser (OA.command "greet" (OA.info parser infomod) <> OA.metavar "greet")
+commandsParser :: OA.Parser Command
+commandsParser =
+  OA.hsubparser
+    ( OA.command "version" (OA.info versionParser infoModVersion)
+        <> OA.command "project" (OA.info projectCommandParser infoModProject)
+    )
   where
-    infomod = OA.fullDesc <> infoModHeader <> OA.progDesc "Greet user." <> OA.footer "This command prints a greeting message to the console."
-    parser =
-      doGreet
-        <$> OA.strOption (OA.short 'n' <> OA.long "name" <> OA.value "World" <> OA.showDefault <> OA.help "Whom to greet.")
+    infoModVersion = OA.fullDesc <> infoModHeader <> OA.progDesc "Show version and build information."
+    infoModProject = OA.fullDesc <> infoModHeader <> OA.progDesc "Project management commands."
 
 
--- | @greet@ CLI command program.
-doGreet :: T.Text -> IO ExitCode
-doGreet n = do
-  TIO.putStrLn ("Hello " <> n <> "!")
+versionParser :: OA.Parser Command
+versionParser =
+  CommandVersion <$> OA.switch (OA.short 'j' <> OA.long "json" <> OA.help "Format output in JSON.")
+
+
+-- | CLI commands for project management.
+newtype ProjectCommand
+  = ProjectCommandIter IterationQuery
+  deriving (Show, Eq)
+
+
+projectCommandParser :: OA.Parser Command
+projectCommandParser =
+  CommandProject
+    <$> OA.hsubparser
+      ( OA.command "iter" (OA.info projectIterParser infoModProjectIter)
+      )
+  where
+    infoModProjectIter = OA.fullDesc <> infoModHeader <> OA.progDesc "Project iteration commands."
+
+
+projectIterParser :: OA.Parser ProjectCommand
+projectIterParser =
+  ProjectCommandIter
+    <$> iterationQueryParser
+
+
+-- * Interpreter
+
+
+runOptions :: Options -> IO ExitCode
+runOptions (MkOptions mCfgPath cmd) =
+  case cmd of
+    CommandVersion json -> doVersion json
+    CommandProject pcmd -> _readConfig >>= (`runCommandProject` pcmd)
+  where
+    _readConfig = readCliConfig mCfgPath
+
+
+runCommandProject :: Config -> ProjectCommand -> IO ExitCode
+runCommandProject cfg (ProjectCommandIter q) = doProjectIter cfg q
+
+
+-- * Performance
+
+
+-- | @project iter@ CLI command program.
+doProjectIter :: Config -> IterationQuery -> IO ExitCode
+doProjectIter cfg q = do
+  let inception = configProjectsInception . configProjects $ cfg
+  date <- queryIteration 7 inception q
+  print date
   pure ExitSuccess
-
-
--- ** version
-
-
--- | Definition for @version@ CLI command.
-commandVersion :: OA.Parser (IO ExitCode)
-commandVersion = OA.hsubparser (OA.command "version" (OA.info parser infomod) <> OA.metavar "version")
-  where
-    infomod = OA.fullDesc <> infoModHeader <> OA.progDesc "Show version and build information." <> OA.footer "This command shows version and build information."
-    parser =
-      doVersion
-        <$> OA.switch (OA.short 'j' <> OA.long "json" <> OA.help "Format output in JSON.")
 
 
 -- | @version@ CLI command program.
@@ -108,7 +155,8 @@ infoModFooter =
 
 -- | Tests a parser with given arguments.
 runParserTest :: OA.Parser a -> [String] -> OA.ParserResult a
-runParserTest parser = OA.execParserPure (OA.prefs prefs) (OA.info (parser <**> OA.helper) infomod)
+runParserTest parser =
+  OA.execParserPure (OA.prefs prefs) (OA.info (parser <**> OA.helper) infomod)
   where
     prefs = OA.showHelpOnError <> OA.helpLongEquals <> OA.helpShowGlobals
     infomod = OA.fullDesc <> OA.progDesc "Test Parser" <> OA.header "testparser - especially for doctests"
@@ -116,7 +164,25 @@ runParserTest parser = OA.execParserPure (OA.prefs prefs) (OA.info (parser <**> 
 
 -- | Tests an IO parser with given arguments.
 runParserTestIO :: OA.Parser (IO a) -> [String] -> IO (Either String ())
-runParserTestIO p as = case runParserTest p as of
-  OA.Success _ -> pure (Right ())
-  OA.Failure f -> pure (Left (show f))
-  OA.CompletionInvoked _ -> pure (Right ())
+runParserTestIO p as =
+  case runParserTest p as of
+    OA.Success _ -> pure (Right ())
+    OA.Failure f -> pure (Left (show f))
+    OA.CompletionInvoked _ -> pure (Right ())
+
+
+-- | Attempts to read the configuration file from the default location or from a specified path.
+readCliConfig :: Maybe FilePath -> IO Config
+readCliConfig mCfgPath =
+  case mCfgPath of
+    Nothing -> do
+      eCfg <- readConfig
+      case eCfg of
+        Left err -> die $ "Failed to read configuration: " <> err
+        Right cfg -> pure cfg
+    Just cfgPath -> do
+      path <- PIO.resolveFile' cfgPath
+      eCfg <- readConfigFromFile path
+      case eCfg of
+        Left err -> die $ "Failed to read configuration from file: " <> err
+        Right cfg -> pure cfg
