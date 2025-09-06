@@ -33,6 +33,8 @@ library:
     - template-haskell
     - text
     - time
+    - typed-process
+    - unordered-containers
     - yaml
 
 executables:

@@ -9,10 +9,12 @@ import qualified Data.ByteString.Lazy.Char8 as BLC
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Options.Applicative as OA
+import qualified Path as P
 import qualified Path.IO as PIO
-import Prix.Config (Config (..), ConfigProjects (..), readConfig, readConfigFromFile)
+import Prix.Config (Config (..), readConfig, readConfigFromFile)
+import qualified Prix.Config as Config
 import qualified Prix.Meta as Meta
-import Prix.Project (IterationQuery, iterationQueryParser, queryIteration)
+import Prix.Project (IterationQuery, getProjectData, ghGetRateLimitRemaining, iterationQueryParser, queryIteration)
 import System.Exit (ExitCode (..), die)
 
 
@@ -54,6 +56,7 @@ optionsParser =
 data Command
   = CommandVersion Bool
   | CommandProject !ProjectCommand
+  | CommandGh !GhCommand
   deriving (Show, Eq)
 
 
@@ -61,11 +64,13 @@ commandsParser :: OA.Parser Command
 commandsParser =
   OA.hsubparser
     ( OA.command "version" (OA.info versionParser infoModVersion)
+        <> OA.command "gh" (OA.info ghCommandParser infoModGh)
         <> OA.command "project" (OA.info projectCommandParser infoModProject)
     )
   where
     infoModVersion = OA.fullDesc <> infoModHeader <> OA.progDesc "Show version and build information."
     infoModProject = OA.fullDesc <> infoModHeader <> OA.progDesc "Project management commands."
+    infoModGh = OA.fullDesc <> infoModHeader <> OA.progDesc "GitHub related commands."
 
 
 versionParser :: OA.Parser Command
@@ -74,8 +79,9 @@ versionParser =
 
 
 -- | CLI commands for project management.
-newtype ProjectCommand
+data ProjectCommand
   = ProjectCommandIter IterationQuery
+  | ProjectCommandSync
   deriving (Show, Eq)
 
 
@@ -84,15 +90,38 @@ projectCommandParser =
   CommandProject
     <$> OA.hsubparser
       ( OA.command "iter" (OA.info projectIterParser infoModProjectIter)
+          <> OA.command "sync" (OA.info (pure ProjectCommandSync) infoModProjectSync)
       )
   where
     infoModProjectIter = OA.fullDesc <> infoModHeader <> OA.progDesc "Project iteration commands."
+    infoModProjectSync = OA.fullDesc <> infoModHeader <> OA.progDesc "Synchronize project data."
 
 
 projectIterParser :: OA.Parser ProjectCommand
 projectIterParser =
   ProjectCommandIter
     <$> iterationQueryParser
+
+
+-- | CLI commands for GitHub related tasks.
+data GhCommand
+  = GhCommandApiLimit
+  deriving (Show, Eq)
+
+
+ghCommandParser :: OA.Parser Command
+ghCommandParser =
+  CommandGh
+    <$> OA.hsubparser
+      ( OA.command "api-limit" (OA.info ghApiLimitParser infoModGhApiLimit)
+      )
+  where
+    infoModGhApiLimit = OA.fullDesc <> infoModHeader <> OA.progDesc "GitHub API Remaining Limit."
+
+
+ghApiLimitParser :: OA.Parser GhCommand
+ghApiLimitParser =
+  pure GhCommandApiLimit
 
 
 -- * Interpreter
@@ -103,12 +132,27 @@ runOptions (MkOptions mCfgPath cmd) =
   case cmd of
     CommandVersion json -> doVersion json
     CommandProject pcmd -> _readConfig >>= (`runCommandProject` pcmd)
+    CommandGh ghcmd -> _readConfig >>= (`runCommandGh` ghcmd)
   where
     _readConfig = readCliConfig mCfgPath
 
 
 runCommandProject :: Config -> ProjectCommand -> IO ExitCode
 runCommandProject cfg (ProjectCommandIter q) = doProjectIter cfg q
+runCommandProject cfg ProjectCommandSync = do
+  projects <- mapM getProjectData (configProjects cfg)
+  filePath <- Config.getAppDataFileProjectItems
+  PIO.ensureDir (P.parent filePath)
+  Aeson.encodeFile (P.toFilePath filePath) projects
+  putStrLn $ "Wrote project items to " <> P.toFilePath filePath
+  pure ExitSuccess
+
+
+runCommandGh :: Config -> GhCommand -> IO ExitCode
+runCommandGh _ GhCommandApiLimit = do
+  limit <- ghGetRateLimitRemaining
+  print limit
+  pure ExitSuccess
 
 
 -- * Performance
@@ -117,7 +161,7 @@ runCommandProject cfg (ProjectCommandIter q) = doProjectIter cfg q
 -- | @project iter@ CLI command program.
 doProjectIter :: Config -> IterationQuery -> IO ExitCode
 doProjectIter cfg q = do
-  let inception = configProjectsInception . configProjects $ cfg
+  let inception = configInception cfg
   date <- queryIteration 7 inception q
   print date
   pure ExitSuccess
