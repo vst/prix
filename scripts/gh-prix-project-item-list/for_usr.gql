@@ -1,0 +1,140 @@
+fragment ThisOwner on Actor {
+  login
+  url
+  avatarUrl
+}
+
+fragment ThisProject on ProjectV2 {
+  title
+  number
+  url
+}
+
+fragment ThisProjectItem on ProjectV2Item {
+  type
+  id
+  status: fieldValueByName(name: "Status") {
+    ... on ProjectV2ItemFieldSingleSelectValue {
+      value: name
+    }
+  }
+  iteration: fieldValueByName(name: "Iteration") {
+    ... on ProjectV2ItemFieldIterationValue {
+      value: title
+    }
+  }
+  urgency: fieldValueByName(name: "Urgency") {
+    ... on ProjectV2ItemFieldSingleSelectValue {
+      value: name
+    }
+  }
+  impact: fieldValueByName(name: "Impact") {
+    ... on ProjectV2ItemFieldSingleSelectValue {
+      value: name
+    }
+  }
+  reach: fieldValueByName(name: "Reach") {
+    ... on ProjectV2ItemFieldSingleSelectValue {
+      value: name
+    }
+  }
+  size: fieldValueByName(name: "Size") {
+    ... on ProjectV2ItemFieldSingleSelectValue {
+      value: name
+    }
+  }
+  difficulty: fieldValueByName(name: "Difficulty") {
+    ... on ProjectV2ItemFieldSingleSelectValue {
+      value: name
+    }
+  }
+  confidence: fieldValueByName(name: "Confidence") {
+    ... on ProjectV2ItemFieldSingleSelectValue {
+      value: name
+    }
+  }
+  theme: fieldValueByName(name: "Theme") {
+    ... on ProjectV2ItemFieldSingleSelectValue {
+      value: name
+    }
+  }
+  score: fieldValueByName(name: "Score") {
+    ... on ProjectV2ItemFieldNumberValue {
+      value: number
+    }
+  }
+  content {
+    ...ThisProjectItemContent
+  }
+}
+
+fragment ThisProjectItemContent on ProjectV2ItemContent {
+  ... on DraftIssue {
+    id
+    title
+    createdAt
+    assignees(first: 1) {
+      nodes {
+        login
+      }
+    }
+    body
+  }
+  ... on Issue {
+    id
+    repository {
+      nameWithOwner
+    }
+    number
+    url
+    title
+    createdAt
+    assignees(first: 1) {
+      nodes {
+        login
+      }
+    }
+    body
+    issueType {
+      name
+    }
+    state
+    stateReason
+  }
+  ... on PullRequest {
+    id
+    repository {
+      nameWithOwner
+    }
+    number
+    url
+    title
+    createdAt
+    assignees(first: 1) {
+      nodes {
+        login
+      }
+    }
+    body
+    state
+  }
+}
+
+query ($login: String!, $number: Int!, $endCursor: String) {
+  owner: user(login: $login) {
+    type: __typename
+    ...ThisOwner
+    projectV2(number: $number) {
+      ...ThisProject
+      items(first: 100, after: $endCursor) {
+        nodes {
+          ...ThisProjectItem
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+      }
+    }
+  }
+}
