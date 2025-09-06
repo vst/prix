@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 
 -- | This module provides top-level definitions for the CLI program.
 module Prix.Cli where
@@ -6,6 +7,7 @@ module Prix.Cli where
 import Control.Applicative ((<**>))
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Lazy.Char8 as BLC
+import qualified Data.Csv as Csv
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Options.Applicative as OA
@@ -15,7 +17,10 @@ import Prix.Config (Config (..), readConfig, readConfigFromFile)
 import qualified Prix.Config as Config
 import qualified Prix.Meta as Meta
 import Prix.Project (IterationQuery, getProjectData, ghGetRateLimitRemaining, iterationQueryParser, queryIteration)
+import qualified Prix.Project as Project
 import System.Exit (ExitCode (..), die)
+import qualified Text.Layout.Table as Table
+import qualified Zamazingo.Text as Z.Text
 
 
 -- * Entrypoint
@@ -82,6 +87,7 @@ versionParser =
 data ProjectCommand
   = ProjectCommandIter IterationQuery
   | ProjectCommandSync
+  | ProjectCommandList OutputFormat
   deriving (Show, Eq)
 
 
@@ -91,10 +97,12 @@ projectCommandParser =
     <$> OA.hsubparser
       ( OA.command "iter" (OA.info projectIterParser infoModProjectIter)
           <> OA.command "sync" (OA.info (pure ProjectCommandSync) infoModProjectSync)
+          <> OA.command "list" (OA.info (ProjectCommandList <$> outputFormatParser) infoModProjectList)
       )
   where
     infoModProjectIter = OA.fullDesc <> infoModHeader <> OA.progDesc "Project iteration commands."
     infoModProjectSync = OA.fullDesc <> infoModHeader <> OA.progDesc "Synchronize project data."
+    infoModProjectList = OA.fullDesc <> infoModHeader <> OA.progDesc "List projects."
 
 
 projectIterParser :: OA.Parser ProjectCommand
@@ -146,6 +154,42 @@ runCommandProject cfg ProjectCommandSync = do
   Aeson.encodeFile (P.toFilePath filePath) projects
   putStrLn $ "Wrote project items to " <> P.toFilePath filePath
   pure ExitSuccess
+runCommandProject _ (ProjectCommandList fmt) = do
+  filePath <- Config.getAppDataFileProjectItems
+  eProjects <- Aeson.eitherDecodeFileStrict' (P.toFilePath filePath)
+  case eProjects of
+    Left err -> die $ "Failed to read project items from " <> P.toFilePath filePath <> ": " <> err
+    Right projects -> case fmt of
+      OutputFormatText -> do
+        let title = Table.titlesH header
+            rows = fmap (Table.rowG . getProjectRow) projects
+            spec = [Table.defColSpec, Table.defColSpec, Table.numCol, Table.numCol, Table.defColSpec]
+            table = Table.columnHeaderTableS spec Table.unicodeS title rows
+        putStrLn $ Table.tableString table
+        pure ExitSuccess
+      OutputFormatJSON -> do
+        BLC.putStrLn (Aeson.encode (fmap getProjectObj projects))
+        pure ExitSuccess
+      OutputFormatCSV -> do
+        BLC.putStrLn $ Csv.encode (header : fmap getProjectRow projects)
+        pure ExitSuccess
+  where
+    header = ["Owner", "Name", "Number", "Items", "URL"]
+    getProjectRow Project.MkProject {..} =
+      [ Project.projectOwnerLogin projectOwner
+      , Project.projectMetaTitle projectMeta
+      , Z.Text.tshow $ Project.projectMetaNumber projectMeta
+      , Z.Text.tshow $ length projectItems
+      , Project.projectMetaUrl projectMeta
+      ]
+    getProjectObj Project.MkProject {..} =
+      Aeson.object
+        [ "owner" Aeson..= Project.projectOwnerLogin projectOwner
+        , "name" Aeson..= Project.projectMetaTitle projectMeta
+        , "number" Aeson..= Project.projectMetaNumber projectMeta
+        , "items" Aeson..= length projectItems
+        , "url" Aeson..= Project.projectMetaUrl projectMeta
+        ]
 
 
 runCommandGh :: Config -> GhCommand -> IO ExitCode
@@ -230,3 +274,22 @@ readCliConfig mCfgPath =
       case eCfg of
         Left err -> die $ "Failed to read configuration from file: " <> err
         Right cfg -> pure cfg
+
+
+data OutputFormat
+  = OutputFormatText
+  | OutputFormatJSON
+  | OutputFormatCSV
+  deriving (Show, Eq)
+
+
+outputFormatParser :: OA.Parser OutputFormat
+outputFormatParser =
+  OA.option parseFormat (OA.long "format" <> OA.short 'f' <> OA.metavar "FORMAT" <> OA.value OutputFormatText <> OA.help "Output format (text, json, csv)")
+  where
+    parseFormat = OA.eitherReader $ \s ->
+      case T.toLower (T.pack s) of
+        "text" -> Right OutputFormatText
+        "json" -> Right OutputFormatJSON
+        "csv" -> Right OutputFormatCSV
+        _ -> Left "Invalid output format. Valid options are: text, json, csv."

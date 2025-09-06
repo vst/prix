@@ -25,11 +25,13 @@ library:
     - aeson
     - autodocodec
     - bytestring
+    - cassava
     - githash
     - optparse-applicative
     - path
     - path-io
     - string-interpolate
+    - table-layout
     - template-haskell
     - text
     - time
