@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TypeApplications #-}
 
 -- | This module provides top-level definitions for the CLI program.
 module Prix.Cli where
@@ -8,6 +9,7 @@ import Control.Applicative ((<**>))
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Lazy.Char8 as BLC
 import qualified Data.Csv as Csv
+import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Options.Applicative as OA
@@ -88,6 +90,7 @@ data ProjectCommand
   = ProjectCommandIter IterationQuery
   | ProjectCommandSync
   | ProjectCommandList OutputFormat
+  | ProjectCommandItem ProjectItemCommand
   deriving (Show, Eq)
 
 
@@ -98,17 +101,39 @@ projectCommandParser =
       ( OA.command "iter" (OA.info projectIterParser infoModProjectIter)
           <> OA.command "sync" (OA.info (pure ProjectCommandSync) infoModProjectSync)
           <> OA.command "list" (OA.info (ProjectCommandList <$> outputFormatParser) infoModProjectList)
+          <> OA.command "item" (OA.info projectItemParser infoModProjectItem)
       )
   where
     infoModProjectIter = OA.fullDesc <> infoModHeader <> OA.progDesc "Project iteration commands."
     infoModProjectSync = OA.fullDesc <> infoModHeader <> OA.progDesc "Synchronize project data."
     infoModProjectList = OA.fullDesc <> infoModHeader <> OA.progDesc "List projects."
+    infoModProjectItem = OA.fullDesc <> infoModHeader <> OA.progDesc "Project item commands."
 
 
 projectIterParser :: OA.Parser ProjectCommand
 projectIterParser =
   ProjectCommandIter
     <$> iterationQueryParser
+
+
+newtype ProjectItemCommand
+  = ProjectItemCommandList OutputFormat
+  deriving (Show, Eq)
+
+
+projectItemParser :: OA.Parser ProjectCommand
+projectItemParser =
+  ProjectCommandItem
+    <$> projectItemCommandParser
+
+
+projectItemCommandParser :: OA.Parser ProjectItemCommand
+projectItemCommandParser =
+  OA.hsubparser
+    ( OA.command "list" (OA.info (ProjectItemCommandList <$> outputFormatParser) infoModProjectItemList)
+    )
+  where
+    infoModProjectItemList = OA.fullDesc <> infoModHeader <> OA.progDesc "List project items."
 
 
 -- | CLI commands for GitHub related tasks.
@@ -158,7 +183,7 @@ runCommandProject _ (ProjectCommandList fmt) = do
   filePath <- Config.getAppDataFileProjectItems
   eProjects <- Aeson.eitherDecodeFileStrict' (P.toFilePath filePath)
   case eProjects of
-    Left err -> die $ "Failed to read project items from " <> P.toFilePath filePath <> ": " <> err
+    Left err -> die $ "Failed to read projects from " <> P.toFilePath filePath <> ": " <> err
     Right projects -> case fmt of
       OutputFormatText -> do
         let title = Table.titlesH header
@@ -190,6 +215,108 @@ runCommandProject _ (ProjectCommandList fmt) = do
         , "items" Aeson..= length projectItems
         , "url" Aeson..= Project.projectMetaUrl projectMeta
         ]
+runCommandProject _ (ProjectCommandItem (ProjectItemCommandList fmt)) = do
+  filePath <- Config.getAppDataFileProjectItems
+  eProjects <- Aeson.eitherDecodeFileStrict' @[Project.Project] (P.toFilePath filePath)
+  case eProjects of
+    Left err -> die $ "Failed to read project items from " <> P.toFilePath filePath <> ": " <> err
+    Right projects -> case fmt of
+      OutputFormatText -> do
+        let title = Table.titlesH (take 9 header)
+            rows = Table.rowG <$> concatMap getProjectRows projects
+            spec = replicate 9 Table.defColSpec
+            table = Table.columnHeaderTableS spec Table.unicodeS title rows
+        putStrLn $ Table.tableString table
+        pure ExitSuccess
+      OutputFormatJSON -> do
+        BLC.putStrLn (Aeson.encode projects)
+        pure ExitSuccess
+      OutputFormatCSV -> do
+        BLC.putStrLn $ Csv.encode (header : concatMap getProjectRows projects)
+        pure ExitSuccess
+  where
+    header =
+      [ "Project Owner"
+      , "Project Name"
+      , "Project Number"
+      , "ID"
+      , "Created At"
+      , "Title"
+      , "Assignee"
+      , "Status"
+      , "Iteration"
+      , "Urgency"
+      , "Impact"
+      , "Reach"
+      , "Size"
+      , "Difficulty"
+      , "Confidence"
+      , "Theme"
+      , "Score"
+      , "Content Type"
+      , "Content ID"
+      , "Content Repo"
+      , "Content Number"
+      , "Content URL"
+      , "Content State"
+      , "Content State Reason"
+      , "Content Issue Type"
+      ]
+    getProjectRows Project.MkProject {..} =
+      let pOwner = Project.projectOwnerLogin projectOwner
+          pTitle = Project.projectMetaTitle projectMeta
+          pNumber = Z.Text.tshow $ Project.projectMetaNumber projectMeta
+       in flip fmap projectItems $ \Project.MkProjectItem {..} ->
+            [ pOwner
+            , pTitle
+            , pNumber
+            , projectItemId
+            , Z.Text.tshow projectItemCreatedAt
+            , projectItemTitle
+            , fromMaybe "" projectItemAssignee
+            , maybe "" Project.projectItemStatusLabel projectItemStatus
+            , maybe "" Z.Text.tshow projectItemIteration
+            , maybe "" Project.projectItemUrgencyLabel projectItemUrgency
+            , maybe "" Project.projectItemImpactLabel projectItemImpact
+            , maybe "" Project.projectItemReachLabel projectItemReach
+            , maybe "" Project.projectItemSizeLabel projectItemSize
+            , maybe "" Project.projectItemDifficultyLabel projectItemDifficulty
+            , maybe "" Project.projectItemConfidenceLabel projectItemConfidence
+            , maybe "" Project.projectItemThemeLabel projectItemTheme
+            , maybe "" Z.Text.tshow projectItemScore
+            , case projectItemContent of
+                Project.ProjectItemContentDraftIssue _ -> "Draft Issue"
+                Project.ProjectItemContentIssue _ -> "Issue"
+                Project.ProjectItemContentPullRequest _ -> "Pull Request"
+            , case projectItemContent of
+                Project.ProjectItemContentDraftIssue Project.MkDraftIssueContent {..} -> draftIssueContentId
+                Project.ProjectItemContentIssue Project.MkIssueContent {..} -> issueContentId
+                Project.ProjectItemContentPullRequest Project.MkPullRequestContent {..} -> pullRequestContentId
+            , case projectItemContent of
+                Project.ProjectItemContentDraftIssue Project.MkDraftIssueContent {} -> ""
+                Project.ProjectItemContentIssue Project.MkIssueContent {..} -> issueContentRepository
+                Project.ProjectItemContentPullRequest Project.MkPullRequestContent {..} -> pullRequestContentRepository
+            , case projectItemContent of
+                Project.ProjectItemContentDraftIssue Project.MkDraftIssueContent {} -> ""
+                Project.ProjectItemContentIssue Project.MkIssueContent {..} -> Z.Text.tshow issueContentNumber
+                Project.ProjectItemContentPullRequest Project.MkPullRequestContent {..} -> Z.Text.tshow pullRequestContentNumber
+            , case projectItemContent of
+                Project.ProjectItemContentDraftIssue Project.MkDraftIssueContent {} -> ""
+                Project.ProjectItemContentIssue Project.MkIssueContent {..} -> issueContentUrl
+                Project.ProjectItemContentPullRequest Project.MkPullRequestContent {..} -> pullRequestContentUrl
+            , case projectItemContent of
+                Project.ProjectItemContentDraftIssue Project.MkDraftIssueContent {} -> ""
+                Project.ProjectItemContentIssue Project.MkIssueContent {..} -> Project.issueStateLabel issueContentState
+                Project.ProjectItemContentPullRequest Project.MkPullRequestContent {..} -> Project.pullRequestStateLabel pullRequestContentState
+            , case projectItemContent of
+                Project.ProjectItemContentDraftIssue Project.MkDraftIssueContent {} -> ""
+                Project.ProjectItemContentIssue Project.MkIssueContent {..} -> maybe "" Project.issueStateReasonLabel issueContentStateReason
+                Project.ProjectItemContentPullRequest Project.MkPullRequestContent {} -> ""
+            , case projectItemContent of
+                Project.ProjectItemContentDraftIssue Project.MkDraftIssueContent {} -> ""
+                Project.ProjectItemContentIssue Project.MkIssueContent {..} -> maybe "" Project.issueTypeLabel issueContentIssueType
+                Project.ProjectItemContentPullRequest Project.MkPullRequestContent {} -> ""
+            ]
 
 
 runCommandGh :: Config -> GhCommand -> IO ExitCode
