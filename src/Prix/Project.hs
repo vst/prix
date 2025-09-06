@@ -197,9 +197,9 @@ data IssueContent = MkIssueContent
   , issueContentRepository :: !T.Text
   , issueContentNumber :: !Integer
   , issueContentUrl :: !T.Text
-  , issueContentIssueType :: !(Maybe IssueType)
   , issueContentState :: !IssueState
   , issueContentStateReason :: !(Maybe IssueStateReason)
+  , issueContentIssueType :: !(Maybe IssueType)
   }
   deriving stock (Show, Eq, Generic)
   deriving (Aeson.FromJSON, Aeson.ToJSON) via (ADC.Autodocodec IssueContent)
@@ -213,9 +213,9 @@ instance ADC.HasCodec IssueContent where
         <*> ADC.requiredField "repository" "Repository Name" ADC..= issueContentRepository
         <*> ADC.requiredField "number" "Issue Number" ADC..= issueContentNumber
         <*> ADC.requiredField "url" "Issue URL" ADC..= issueContentUrl
-        <*> ADC.requiredField "issueType" "Issue Type" ADC..= issueContentIssueType
         <*> ADC.requiredField "state" "Issue State" ADC..= issueContentState
         <*> ADC.requiredField "stateReason" "State Reason" ADC..= issueContentStateReason
+        <*> ADC.requiredField "issueType" "Issue Type" ADC..= issueContentIssueType
 
 
 -- | Type of the issue.
@@ -235,12 +235,15 @@ data IssueType
 
 
 instance ADC.HasCodec IssueType where
-  codec = ADC.boundedEnumCodec $ \case
-    IssueTypeTask -> "Task"
-    IssueTypeBug -> "Bug"
-    IssueTypeFeature -> "Feature"
-    IssueTypeEpic -> "Epic"
-    IssueTypeDocs -> "Docs"
+  codec = ADC.boundedEnumCodec issueTypeLabel
+
+
+issueTypeLabel :: IssueType -> T.Text
+issueTypeLabel IssueTypeTask = "Task"
+issueTypeLabel IssueTypeBug = "Bug"
+issueTypeLabel IssueTypeFeature = "Feature"
+issueTypeLabel IssueTypeEpic = "Epic"
+issueTypeLabel IssueTypeDocs = "Docs"
 
 
 data IssueState
@@ -251,9 +254,12 @@ data IssueState
 
 
 instance ADC.HasCodec IssueState where
-  codec = ADC.boundedEnumCodec $ \case
-    IssueStateOpen -> "OPEN"
-    IssueStateClosed -> "CLOSED"
+  codec = ADC.boundedEnumCodec issueStateLabel
+
+
+issueStateLabel :: IssueState -> T.Text
+issueStateLabel IssueStateOpen = "OPEN"
+issueStateLabel IssueStateClosed = "CLOSED"
 
 
 data IssueStateReason
@@ -265,11 +271,14 @@ data IssueStateReason
 
 
 instance ADC.HasCodec IssueStateReason where
-  codec = ADC.boundedEnumCodec $ \case
-    IssueStateReasonReopened -> "REOPENED"
-    IssueStateReasonNotPlanned -> "NOT_PLANNED"
-    IssueStateReasonCompleted -> "COMPLETED"
-    IssueStateReasonDuplicate -> "DUPLICATE"
+  codec = ADC.boundedEnumCodec issueStateReasonLabel
+
+
+issueStateReasonLabel :: IssueStateReason -> T.Text
+issueStateReasonLabel IssueStateReasonReopened = "REOPENED"
+issueStateReasonLabel IssueStateReasonNotPlanned = "NOT_PLANNED"
+issueStateReasonLabel IssueStateReasonCompleted = "COMPLETED"
+issueStateReasonLabel IssueStateReasonDuplicate = "DUPLICATE"
 
 
 -- *** Pull Request
@@ -306,10 +315,13 @@ data PullRequestState
 
 
 instance ADC.HasCodec PullRequestState where
-  codec = ADC.boundedEnumCodec $ \case
-    PullRequestStateOpen -> "OPEN"
-    PullRequestStateClosed -> "CLOSED"
-    PullRequestStateMerged -> "MERGED"
+  codec = ADC.boundedEnumCodec pullRequestStateLabel
+
+
+pullRequestStateLabel :: PullRequestState -> T.Text
+pullRequestStateLabel PullRequestStateOpen = "OPEN"
+pullRequestStateLabel PullRequestStateClosed = "CLOSED"
+pullRequestStateLabel PullRequestStateMerged = "MERGED"
 
 
 -- ** Properties
@@ -337,13 +349,16 @@ data ProjectItemStatus
 
 
 instance ADC.HasCodec ProjectItemStatus where
-  codec = ADC.boundedEnumCodec $ \case
-    ProjectItemStatusInbox -> "Inbox"
-    ProjectItemStatusTriage -> "Triage"
-    ProjectItemStatusBacklog -> "Backlog"
-    ProjectItemStatusPlanned -> "Planned"
-    ProjectItemStatusActive -> "Active"
-    ProjectItemStatusDone -> "Done"
+  codec = ADC.boundedEnumCodec projectItemStatusLabel
+
+
+projectItemStatusLabel :: ProjectItemStatus -> T.Text
+projectItemStatusLabel ProjectItemStatusInbox = "Inbox"
+projectItemStatusLabel ProjectItemStatusTriage = "Triage"
+projectItemStatusLabel ProjectItemStatusBacklog = "Backlog"
+projectItemStatusLabel ProjectItemStatusPlanned = "Planned"
+projectItemStatusLabel ProjectItemStatusActive = "Active"
+projectItemStatusLabel ProjectItemStatusDone = "Done"
 
 
 projectItemStatusColor :: ProjectItemStatus -> OptionColor
@@ -412,10 +427,13 @@ data ProjectItemUrgency
 
 
 instance ADC.HasCodec ProjectItemUrgency where
-  codec = ADC.boundedEnumCodec $ \case
-    ProjectItemUrgencyLow -> "low"
-    ProjectItemUrgencyMedium -> "medium"
-    ProjectItemUrgencyHigh -> "high"
+  codec = ADC.boundedEnumCodec projectItemUrgencyLabel
+
+
+projectItemUrgencyLabel :: ProjectItemUrgency -> T.Text
+projectItemUrgencyLabel ProjectItemUrgencyLow = "low"
+projectItemUrgencyLabel ProjectItemUrgencyMedium = "medium"
+projectItemUrgencyLabel ProjectItemUrgencyHigh = "high"
 
 
 -- *** Impact
@@ -443,11 +461,14 @@ data ProjectItemImpact
 
 
 instance ADC.HasCodec ProjectItemImpact where
-  codec = ADC.boundedEnumCodec $ \case
-    ProjectItemImpactLow -> "low"
-    ProjectItemImpactMedium -> "medium"
-    ProjectItemImpactHigh -> "high"
-    ProjectItemImpactCritical -> "critical"
+  codec = ADC.boundedEnumCodec projectItemImpactLabel
+
+
+projectItemImpactLabel :: ProjectItemImpact -> T.Text
+projectItemImpactLabel ProjectItemImpactLow = "low"
+projectItemImpactLabel ProjectItemImpactMedium = "medium"
+projectItemImpactLabel ProjectItemImpactHigh = "high"
+projectItemImpactLabel ProjectItemImpactCritical = "critical"
 
 
 -- *** Reach
@@ -475,11 +496,14 @@ data ProjectItemReach
 
 
 instance ADC.HasCodec ProjectItemReach where
-  codec = ADC.boundedEnumCodec $ \case
-    ProjectItemReachInternal -> "internal"
-    ProjectItemReachNarrow -> "narrow"
-    ProjectItemReachModerate -> "moderate"
-    ProjectItemReachWide -> "wide"
+  codec = ADC.boundedEnumCodec projectItemReachLabel
+
+
+projectItemReachLabel :: ProjectItemReach -> T.Text
+projectItemReachLabel ProjectItemReachInternal = "internal"
+projectItemReachLabel ProjectItemReachNarrow = "narrow"
+projectItemReachLabel ProjectItemReachModerate = "moderate"
+projectItemReachLabel ProjectItemReachWide = "wide"
 
 
 -- *** Confidence
@@ -505,10 +529,13 @@ data ProjectItemConfidence
 
 
 instance ADC.HasCodec ProjectItemConfidence where
-  codec = ADC.boundedEnumCodec $ \case
-    ProjectItemConfidenceWeak -> "weak"
-    ProjectItemConfidenceModerate -> "moderate"
-    ProjectItemConfidenceStrong -> "strong"
+  codec = ADC.boundedEnumCodec projectItemConfidenceLabel
+
+
+projectItemConfidenceLabel :: ProjectItemConfidence -> T.Text
+projectItemConfidenceLabel ProjectItemConfidenceWeak = "weak"
+projectItemConfidenceLabel ProjectItemConfidenceModerate = "moderate"
+projectItemConfidenceLabel ProjectItemConfidenceStrong = "strong"
 
 
 -- *** Size
@@ -567,10 +594,13 @@ data ProjectItemSize
 
 
 instance ADC.HasCodec ProjectItemSize where
-  codec = ADC.boundedEnumCodec $ \case
-    ProjectItemSizeSmall -> "small"
-    ProjectItemSizeMedium -> "medium"
-    ProjectItemSizeLarge -> "large"
+  codec = ADC.boundedEnumCodec projectItemSizeLabel
+
+
+projectItemSizeLabel :: ProjectItemSize -> T.Text
+projectItemSizeLabel ProjectItemSizeSmall = "small"
+projectItemSizeLabel ProjectItemSizeMedium = "medium"
+projectItemSizeLabel ProjectItemSizeLarge = "large"
 
 
 -- *** Difficulty
@@ -630,10 +660,13 @@ data ProjectItemDifficulty
 
 
 instance ADC.HasCodec ProjectItemDifficulty where
-  codec = ADC.boundedEnumCodec $ \case
-    ProjectItemDifficultyEasy -> "easy"
-    ProjectItemDifficultyMedium -> "medium"
-    ProjectItemDifficultyHard -> "hard"
+  codec = ADC.boundedEnumCodec projectItemDifficultyLabel
+
+
+projectItemDifficultyLabel :: ProjectItemDifficulty -> T.Text
+projectItemDifficultyLabel ProjectItemDifficultyEasy = "easy"
+projectItemDifficultyLabel ProjectItemDifficultyMedium = "medium"
+projectItemDifficultyLabel ProjectItemDifficultyHard = "hard"
 
 
 -- *** Theme
@@ -676,13 +709,16 @@ data ProjectItemTheme
 
 
 instance ADC.HasCodec ProjectItemTheme where
-  codec = ADC.boundedEnumCodec $ \case
-    ProjectItemThemeGrowth -> "growth"
-    ProjectItemThemeRetention -> "retention"
-    ProjectItemThemeEfficiency -> "efficiency"
-    ProjectItemThemeCompliance -> "compliance"
-    ProjectItemThemeMaintenance -> "maintenance"
-    ProjectItemThemeLearning -> "learning"
+  codec = ADC.boundedEnumCodec projectItemThemeLabel
+
+
+projectItemThemeLabel :: ProjectItemTheme -> T.Text
+projectItemThemeLabel ProjectItemThemeGrowth = "growth"
+projectItemThemeLabel ProjectItemThemeRetention = "retention"
+projectItemThemeLabel ProjectItemThemeEfficiency = "efficiency"
+projectItemThemeLabel ProjectItemThemeCompliance = "compliance"
+projectItemThemeLabel ProjectItemThemeMaintenance = "maintenance"
+projectItemThemeLabel ProjectItemThemeLearning = "learning"
 
 
 -- *** Effort
@@ -937,9 +973,12 @@ data OwnerType
 
 
 instance ADC.HasCodec OwnerType where
-  codec = ADC.boundedEnumCodec $ \case
-    OwnerTypeUser -> "USER"
-    OwnerTypeOrganization -> "ORGANIZATION"
+  codec = ADC.boundedEnumCodec ownerTypeLabel
+
+
+ownerTypeLabel :: OwnerType -> T.Text
+ownerTypeLabel OwnerTypeUser = "USER"
+ownerTypeLabel OwnerTypeOrganization = "ORGANIZATION"
 
 
 -- * IO
