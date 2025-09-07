@@ -1,7 +1,7 @@
 roots = [
   ## Definitions we always need:
   "^Main.main$",
-  "^Prix.Cli.*$",
+  "^Prix.*",
   "^Paths_prix.*",
 
   ## Temporary suspensions:

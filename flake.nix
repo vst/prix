@@ -18,6 +18,14 @@
         ## Read package information:
         package = readYAML ./package.yaml;
 
+        ## Build individual scripts:
+        gh-prix-project-item-list = pkgs.callPackage ./scripts/gh-prix-project-item-list { };
+
+        ## Build a list of all scripts:
+        scripts = [
+          gh-prix-project-item-list
+        ];
+
         ## Get our Haskell:
         thisHaskell = pkgs.haskellPackages.override {
           overrides = self: super: {
@@ -41,7 +49,7 @@
           withHoogle = false;
 
           ## Build inputs for development shell:
-          buildInputs = [
+          buildInputs = scripts ++ [
             ## Haskell related build inputs:
             thisHaskell.apply-refact
             thisHaskell.cabal-fmt
@@ -79,7 +87,7 @@
               mkdir -p $out/{bin}
 
               ## Wrap program to add PATHs to dependencies:
-              wrapProgram $out/bin/${package.name} --prefix PATH : ${pkgs.lib.makeBinPath []}
+              wrapProgram $out/bin/${package.name} --prefix PATH : ${pkgs.lib.makeBinPath scripts}
             '';
           })
         );
