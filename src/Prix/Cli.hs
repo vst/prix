@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeApplications #-}
 
@@ -6,10 +7,13 @@
 module Prix.Cli where
 
 import Control.Applicative ((<**>))
+import Control.Monad (forM_)
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Lazy.Char8 as BLC
 import qualified Data.Csv as Csv
+import qualified Data.List as List
 import Data.Maybe (fromMaybe)
+import Data.String.Interpolate (i)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Options.Applicative as OA
@@ -18,7 +22,6 @@ import qualified Path.IO as PIO
 import Prix.Config (Config (..), readConfig, readConfigFromFile)
 import qualified Prix.Config as Config
 import qualified Prix.Meta as Meta
-import Prix.Project (IterationQuery, getProjectData, ghGetRateLimitRemaining, iterationQueryParser, queryIteration)
 import qualified Prix.Project as Project
 import System.Exit (ExitCode (..), die)
 import qualified Text.Layout.Table as Table
@@ -64,6 +67,7 @@ data Command
   = CommandVersion Bool
   | CommandProject !ProjectCommand
   | CommandGh !GhCommand
+  | CommandPulse !PulseCommand
   deriving (Show, Eq)
 
 
@@ -73,11 +77,13 @@ commandsParser =
     ( OA.command "version" (OA.info versionParser infoModVersion)
         <> OA.command "gh" (OA.info ghCommandParser infoModGh)
         <> OA.command "project" (OA.info projectCommandParser infoModProject)
+        <> OA.command "pulse" (OA.info pulseCommandParser infoModPulse)
     )
   where
     infoModVersion = OA.fullDesc <> infoModHeader <> OA.progDesc "Show version and build information."
     infoModProject = OA.fullDesc <> infoModHeader <> OA.progDesc "Project management commands."
     infoModGh = OA.fullDesc <> infoModHeader <> OA.progDesc "GitHub related commands."
+    infoModPulse = OA.fullDesc <> infoModHeader <> OA.progDesc "Pulse related commands."
 
 
 versionParser :: OA.Parser Command
@@ -87,7 +93,7 @@ versionParser =
 
 -- | CLI commands for project management.
 data ProjectCommand
-  = ProjectCommandIter IterationQuery
+  = ProjectCommandIter Project.IterationQuery
   | ProjectCommandSync
   | ProjectCommandList OutputFormat
   | ProjectCommandItem ProjectItemCommand
@@ -113,7 +119,7 @@ projectCommandParser =
 projectIterParser :: OA.Parser ProjectCommand
 projectIterParser =
   ProjectCommandIter
-    <$> iterationQueryParser
+    <$> Project.iterationQueryParser
 
 
 newtype ProjectItemCommand
@@ -157,6 +163,36 @@ ghApiLimitParser =
   pure GhCommandApiLimit
 
 
+data PulseCommand
+  = PulseCommandReview !Project.IterationQuery
+  | PulseCommandPlan !Project.IterationQuery
+  deriving (Show, Eq)
+
+
+pulseCommandParser :: OA.Parser Command
+pulseCommandParser =
+  CommandPulse
+    <$> OA.hsubparser
+      ( OA.command "review" (OA.info pulseReviewParser infoModPulseReview)
+          <> OA.command "plan" (OA.info pulsePlanParser infoModPulsePlan)
+      )
+  where
+    infoModPulseReview = OA.fullDesc <> infoModHeader <> OA.progDesc "Review iteration."
+    infoModPulsePlan = OA.fullDesc <> infoModHeader <> OA.progDesc "Plan iteration."
+
+
+pulseReviewParser :: OA.Parser PulseCommand
+pulseReviewParser =
+  PulseCommandReview
+    <$> Project.iterationQueryParser
+
+
+pulsePlanParser :: OA.Parser PulseCommand
+pulsePlanParser =
+  PulseCommandPlan
+    <$> Project.iterationQueryParser
+
+
 -- * Interpreter
 
 
@@ -166,6 +202,7 @@ runOptions (MkOptions mCfgPath cmd) =
     CommandVersion json -> doVersion json
     CommandProject pcmd -> _readConfig >>= (`runCommandProject` pcmd)
     CommandGh ghcmd -> _readConfig >>= (`runCommandGh` ghcmd)
+    CommandPulse pulsecmd -> _readConfig >>= (`runCommandPulse` pulsecmd)
   where
     _readConfig = readCliConfig mCfgPath
 
@@ -173,7 +210,7 @@ runOptions (MkOptions mCfgPath cmd) =
 runCommandProject :: Config -> ProjectCommand -> IO ExitCode
 runCommandProject cfg (ProjectCommandIter q) = doProjectIter cfg q
 runCommandProject cfg ProjectCommandSync = do
-  projects <- mapM getProjectData (configProjects cfg)
+  projects <- mapM Project.getProjectData (configProjects cfg)
   filePath <- Config.getAppDataFileProjectItems
   PIO.ensureDir (P.parent filePath)
   Aeson.encodeFile (P.toFilePath filePath) projects
@@ -239,6 +276,7 @@ runCommandProject _ (ProjectCommandItem (ProjectItemCommandList fmt)) = do
       [ "Project Owner"
       , "Project Name"
       , "Project Number"
+      , "Project URL"
       , "ID"
       , "Created At"
       , "Title"
@@ -266,10 +304,12 @@ runCommandProject _ (ProjectCommandItem (ProjectItemCommandList fmt)) = do
       let pOwner = Project.projectOwnerLogin projectOwner
           pTitle = Project.projectMetaTitle projectMeta
           pNumber = Z.Text.tshow $ Project.projectMetaNumber projectMeta
+          pUrl = Project.projectMetaUrl projectMeta
        in flip fmap projectItems $ \Project.MkProjectItem {..} ->
             [ pOwner
             , pTitle
             , pNumber
+            , pUrl
             , projectItemId
             , Z.Text.tshow projectItemCreatedAt
             , projectItemTitle
@@ -321,20 +361,134 @@ runCommandProject _ (ProjectCommandItem (ProjectItemCommandList fmt)) = do
 
 runCommandGh :: Config -> GhCommand -> IO ExitCode
 runCommandGh _ GhCommandApiLimit = do
-  limit <- ghGetRateLimitRemaining
+  limit <- Project.ghGetRateLimitRemaining
   print limit
   pure ExitSuccess
+
+
+runCommandPulse :: Config -> PulseCommand -> IO ExitCode
+runCommandPulse cfg (PulseCommandReview iter) = queryIteration cfg iter >>= doReviewIteration cfg
+runCommandPulse cfg (PulseCommandPlan iter) = queryIteration cfg iter >>= doPlanIteration cfg
+
+
+doReviewIteration :: Config -> Integer -> IO ExitCode
+doReviewIteration cfg iter = do
+  projects <- getProjectItemsForIteration cfg iter
+  mapM_ printProjectReview projects
+  pure ExitSuccess
+
+
+printProjectReview :: Project.Project -> IO ()
+printProjectReview Project.MkProject {..} = do
+  let Project.MkProjectOwner {..} = projectOwner
+      Project.MkProjectMeta {..} = projectMeta
+  TIO.putStrLn [i|\#\#\# [#{projectOwnerLogin}/#{projectMetaTitle}](#{projectMetaUrl}) 👍👎\n|]
+  case projectItems of
+    [] -> TIO.putStrLn "_No items for this iteration._\n"
+    xs -> do
+      let byAssignee = groupItemsByAssignee xs
+      forM_ byAssignee $ \(mAssignee, items) -> do
+        let assigneeText = maybe "Unassigned" ("@" <>) mAssignee
+        TIO.putStrLn [i|\#\#\#\# 👤 #{assigneeText} 👍👎\n|]
+        mapM_ printProjectItemReview items
+        putStrLn ""
+  putStrLn ""
+
+
+doPlanIteration :: Config -> Integer -> IO ExitCode
+doPlanIteration cfg iter = do
+  projects <- getProjectItemsForIteration cfg iter
+  mapM_ printProjectPlan projects
+  pure ExitSuccess
+
+
+printProjectPlan :: Project.Project -> IO ()
+printProjectPlan Project.MkProject {..} = do
+  let Project.MkProjectOwner {..} = projectOwner
+      Project.MkProjectMeta {..} = projectMeta
+  TIO.putStrLn [i|\#\#\# [#{projectOwnerLogin}/#{projectMetaTitle}](#{projectMetaUrl})\n|]
+  case projectItems of
+    [] -> TIO.putStrLn "_No items for this iteration._\n"
+    xs -> do
+      let byAssignee = groupItemsByAssignee xs
+      forM_ byAssignee $ \(mAssignee, items) -> do
+        let assigneeText = maybe "Unassigned" ("@" <>) mAssignee
+        TIO.putStrLn [i|\#\#\#\# 👤 #{assigneeText}\n|]
+        mapM_ printProjectItemPlan items
+        putStrLn ""
+  putStrLn ""
+
+
+groupItemsByAssignee :: [Project.ProjectItem] -> [(Maybe T.Text, [Project.ProjectItem])]
+groupItemsByAssignee =
+  groupOnKey Project.projectItemAssignee . List.sortOn Project.projectItemAssignee
+
+
+-- From extras:
+groupOnKey :: Eq k => (a -> k) -> [a] -> [(k, [a])]
+groupOnKey _ [] = []
+groupOnKey f (x : xs) = (fx, x : yes) : groupOnKey f no
+  where
+    fx = f x
+    (yes, no) = span (\y -> fx == f y) xs
+
+
+printProjectItemReview :: Project.ProjectItem -> IO ()
+printProjectItemReview Project.MkProjectItem {..} = do
+  let statusEmoji = maybe "❓" Project.projectItemStatusEmoji projectItemStatus
+      stateEmoji = case projectItemContent of
+        Project.ProjectItemContentDraftIssue _ -> "⚪"
+        Project.ProjectItemContentIssue Project.MkIssueContent {..} ->
+          maybe (Project.issueStateEmoji issueContentState) Project.issueStateReasonEmoji issueContentStateReason
+        Project.ProjectItemContentPullRequest Project.MkPullRequestContent {..} ->
+          Project.pullRequestStateEmoji pullRequestContentState
+      statusLabel = maybe "No Status" Project.projectItemStatusLabel projectItemStatus
+      stateLabel = case projectItemContent of
+        Project.ProjectItemContentDraftIssue _ -> "#N/A"
+        Project.ProjectItemContentIssue Project.MkIssueContent {..} ->
+          maybe (Project.issueStateLabel issueContentState) Project.issueStateReasonLabel issueContentStateReason
+        Project.ProjectItemContentPullRequest Project.MkPullRequestContent {..} ->
+          Project.pullRequestStateLabel pullRequestContentState
+      title = truncText 80 projectItemTitle
+  TIO.putStrLn [i|- #{statusEmoji} #{stateEmoji} [#{title}](#{itemUrl}) `#{statusLabel}` `#{stateLabel}`|]
+  where
+    itemUrl = case projectItemContent of
+      Project.ProjectItemContentDraftIssue Project.MkDraftIssueContent {} -> "#"
+      Project.ProjectItemContentIssue Project.MkIssueContent {..} -> issueContentUrl
+      Project.ProjectItemContentPullRequest Project.MkPullRequestContent {..} -> pullRequestContentUrl
+
+
+printProjectItemPlan :: Project.ProjectItem -> IO ()
+printProjectItemPlan Project.MkProjectItem {..} = do
+  let statusEmoji = maybe "❓" Project.projectItemStatusEmoji projectItemStatus
+      title = truncText 80 projectItemTitle
+  TIO.putStrLn [i|- #{statusEmoji} [#{title}](#{itemUrl})|]
+  where
+    itemUrl = case projectItemContent of
+      Project.ProjectItemContentDraftIssue Project.MkDraftIssueContent {} -> "#"
+      Project.ProjectItemContentIssue Project.MkIssueContent {..} -> issueContentUrl
+      Project.ProjectItemContentPullRequest Project.MkPullRequestContent {..} -> pullRequestContentUrl
+
+
+getProjectItemsForIteration :: Config -> Integer -> IO [Project.Project]
+getProjectItemsForIteration _cfg iter = do
+  filePath <- Config.getAppDataFileProjectItems
+  eProjects <- Aeson.eitherDecodeFileStrict' @[Project.Project] (P.toFilePath filePath)
+  case eProjects of
+    Left err -> die $ "Failed to read project items from " <> P.toFilePath filePath <> ": " <> err
+    Right projects -> pure $ fmap filterIter projects
+  where
+    filterIter prj@Project.MkProject {..} =
+      prj {Project.projectItems = filter (\itm -> Project.projectItemIteration itm == Just iter) projectItems}
 
 
 -- * Performance
 
 
 -- | @project iter@ CLI command program.
-doProjectIter :: Config -> IterationQuery -> IO ExitCode
+doProjectIter :: Config -> Project.IterationQuery -> IO ExitCode
 doProjectIter cfg q = do
-  let inception = configInception cfg
-  date <- queryIteration 7 inception q
-  print date
+  queryIteration cfg q >>= print
   pure ExitSuccess
 
 
@@ -345,6 +499,12 @@ doVersion False = TIO.putStrLn (Meta.prettyBuildInfo Meta.buildInfo) >> pure Exi
 
 
 -- * Helpers
+
+
+queryIteration :: Config -> Project.IterationQuery -> IO Integer
+queryIteration cfg q = do
+  let inception = configInception cfg
+  Project.queryIteration 7 inception q
 
 
 -- | Version option parser.
@@ -420,3 +580,10 @@ outputFormatParser =
         "json" -> Right OutputFormatJSON
         "csv" -> Right OutputFormatCSV
         _ -> Left "Invalid output format. Valid options are: text, json, csv."
+
+
+truncText :: Int -> T.Text -> T.Text
+truncText n txt
+  | T.length txt <= n = txt
+  | n <= 3 = T.take n txt
+  | otherwise = T.take (n - 3) txt <> "..."

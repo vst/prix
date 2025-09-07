@@ -262,6 +262,11 @@ issueStateLabel IssueStateOpen = "OPEN"
 issueStateLabel IssueStateClosed = "CLOSED"
 
 
+issueStateEmoji :: IssueState -> T.Text
+issueStateEmoji IssueStateOpen = "🟢"
+issueStateEmoji IssueStateClosed = "🔴"
+
+
 data IssueStateReason
   = IssueStateReasonReopened
   | IssueStateReasonNotPlanned
@@ -279,6 +284,13 @@ issueStateReasonLabel IssueStateReasonReopened = "REOPENED"
 issueStateReasonLabel IssueStateReasonNotPlanned = "NOT_PLANNED"
 issueStateReasonLabel IssueStateReasonCompleted = "COMPLETED"
 issueStateReasonLabel IssueStateReasonDuplicate = "DUPLICATE"
+
+
+issueStateReasonEmoji :: IssueStateReason -> T.Text
+issueStateReasonEmoji IssueStateReasonReopened = "♻️"
+issueStateReasonEmoji IssueStateReasonNotPlanned = "❌"
+issueStateReasonEmoji IssueStateReasonCompleted = "✅"
+issueStateReasonEmoji IssueStateReasonDuplicate = "⿻"
 
 
 -- *** Pull Request
@@ -322,6 +334,12 @@ pullRequestStateLabel :: PullRequestState -> T.Text
 pullRequestStateLabel PullRequestStateOpen = "OPEN"
 pullRequestStateLabel PullRequestStateClosed = "CLOSED"
 pullRequestStateLabel PullRequestStateMerged = "MERGED"
+
+
+pullRequestStateEmoji :: PullRequestState -> T.Text
+pullRequestStateEmoji PullRequestStateOpen = "🟢"
+pullRequestStateEmoji PullRequestStateClosed = "🔴"
+pullRequestStateEmoji PullRequestStateMerged = "🟣"
 
 
 -- ** Properties
@@ -368,6 +386,16 @@ projectItemStatusColor ProjectItemStatusBacklog = OptionColorGreen
 projectItemStatusColor ProjectItemStatusPlanned = OptionColorYellow
 projectItemStatusColor ProjectItemStatusActive = OptionColorRed
 projectItemStatusColor ProjectItemStatusDone = OptionColorPurple
+
+
+projectItemStatusEmoji :: ProjectItemStatus -> T.Text
+projectItemStatusEmoji =
+  optionColorEmoji . projectItemStatusColor
+
+
+projectItemStatusColorLabel :: ProjectItemStatus -> T.Text
+projectItemStatusColorLabel s =
+  optionColorEmoji (projectItemStatusColor s) <> " " <> projectItemStatusLabel s
 
 
 -- *** Urgency
@@ -786,12 +814,12 @@ projectItemEffortEstimate size difficulty =
 --
 -- The lowest priority can be:
 --
--- >>> issuePriorityScore ProjectItemUrgencyLow ProjectItemReachInternal ProjectItemImpactLow ProjectItemConfidenceWeak ProjectItemSizeLarge ProjectItemDifficultyHard
+-- >>> projectItemPriority ProjectItemUrgencyLow ProjectItemReachInternal ProjectItemImpactLow ProjectItemConfidenceWeak ProjectItemSizeLarge ProjectItemDifficultyHard
 -- 0.006
 --
 -- The highest priority can be:
 --
--- >>> issuePriorityScore ProjectItemUrgencyHigh ProjectItemReachWide ProjectItemImpactCritical ProjectItemConfidenceStrong ProjectItemSizeSmall ProjectItemDifficultyEasy
+-- >>> projectItemPriority ProjectItemUrgencyHigh ProjectItemReachWide ProjectItemImpactCritical ProjectItemConfidenceStrong ProjectItemSizeSmall ProjectItemDifficultyEasy
 -- 18.000
 projectItemPriority
   :: ProjectItemUrgency
@@ -860,18 +888,20 @@ data IterationQuery
   = IterationQueryPrevious
   | IterationQueryCurrent
   | IterationQueryNext
-  | IterationQueryDate Time.Day
+  | IterationQueryDate !Time.Day
+  | IterationQueryIteration !Integer
   deriving (Eq, Show)
 
 
 iterationQueryParser :: OA.Parser IterationQuery
 iterationQueryParser =
-  previous <|> current <|> next <|> bydate
+  previous <|> current <|> next <|> bydate <|> absolute
   where
     previous = IterationQueryPrevious <$ OA.flag' () (OA.long "previous" <> OA.help "Select previous iteration")
     current = IterationQueryCurrent <$ OA.flag' () (OA.long "current" <> OA.help "Select current iteration")
     next = IterationQueryNext <$ OA.flag' () (OA.long "next" <> OA.help "Select next iteration")
     bydate = IterationQueryDate <$> OA.option OA.auto (OA.long "date" <> OA.metavar "YYYY-MM-DD" <> OA.help "Select iteration by date (YYYY-MM-DD format)")
+    absolute = IterationQueryIteration <$> OA.option OA.auto (OA.long "iter" <> OA.metavar "N" <> OA.help "Select iteration number N")
 
 
 queryIteration :: Integer -> Time.Day -> IterationQuery -> IO Integer
@@ -881,6 +911,7 @@ queryIteration days inception query = do
     IterationQueryCurrent -> Time.utctDay <$> Time.getCurrentTime
     IterationQueryNext -> Time.addDays 7 . Time.utctDay <$> Time.getCurrentTime
     IterationQueryDate date -> pure date
+    IterationQueryIteration n -> pure $ Time.addDays (max n 1 * days) inception
   pure $ getIteration days inception reference
 
 
@@ -951,7 +982,7 @@ data OptionColor
 --
 -- >>> fmap optionColorEmoji [OptionColorGray .. OptionColorPurple]
 -- ["\11036","\128998","\129001","\129000","\128999","\128997","\129003","\129002"]
-optionColorEmoji :: OptionColor -> String
+optionColorEmoji :: OptionColor -> T.Text
 optionColorEmoji OptionColorGray = "⬜" -- White large square as 'gray'
 optionColorEmoji OptionColorBlue = "🟦"
 optionColorEmoji OptionColorGreen = "🟩"
