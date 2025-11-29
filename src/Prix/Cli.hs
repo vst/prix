@@ -6,7 +6,7 @@
 -- | This module provides top-level definitions for the CLI program.
 module Prix.Cli where
 
-import Control.Applicative ((<**>))
+import Control.Applicative ((<**>), (<|>))
 import Control.Monad (forM_)
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Lazy.Char8 as BLC
@@ -34,12 +34,13 @@ import qualified Zamazingo.Text as Z.Text
 -- | CLI program entrypoint.
 cli :: IO ExitCode
 cli =
-  OA.execParser (OA.info opts desc) >>= runOptions
+  OA.customExecParser pref (OA.info opts desc) >>= runOptions
   where
     opts = optionsParser <**> infoOptVersion <**> OA.helper
+    pref = OA.prefs (OA.showHelpOnError <> OA.helpLongEquals <> OA.helpShowGlobals)
     desc =
       OA.fullDesc
-        <> OA.progDesc "Top Level Commands"
+        <> OA.progDesc [i|Visit <https://github.com/vst/prix> for more information.|]
         <> infoModHeader
         <> infoModFooter
 
@@ -64,7 +65,7 @@ optionsParser =
 
 -- | CLI commands.
 data Command
-  = CommandVersion Bool
+  = CommandVersion !Bool
   | CommandProject !ProjectCommand
   | CommandGh !GhCommand
   | CommandPulse !PulseCommand
@@ -73,12 +74,24 @@ data Command
 
 commandsParser :: OA.Parser Command
 commandsParser =
-  OA.hsubparser
-    ( OA.command "version" (OA.info versionParser infoModVersion)
-        <> OA.command "gh" (OA.info ghCommandParser infoModGh)
-        <> OA.command "project" (OA.info projectCommandParser infoModProject)
-        <> OA.command "pulse" (OA.info pulseCommandParser infoModPulse)
-    )
+  let commandVersion = OA.command "version" (OA.info versionParser infoModVersion)
+      commandGh = OA.command "gh" (OA.info ghCommandParser infoModGh)
+      commandProject = OA.command "project" (OA.info projectCommandParser infoModProject)
+      commandPulse = OA.command "pulse" (OA.info pulseCommandParser infoModPulse)
+   in OA.hsubparser
+        ( OA.commandGroup "Project Management Commands:"
+            <> commandProject
+            <> commandPulse
+        )
+        <|> OA.hsubparser
+          ( OA.commandGroup "GitHub Commands:"
+              <> commandGh
+          )
+        <|> OA.hsubparser
+          ( OA.commandGroup "Meta Commands"
+              <> OA.hidden
+              <> commandVersion
+          )
   where
     infoModVersion = OA.fullDesc <> infoModHeader <> OA.progDesc "Show version and build information."
     infoModProject = OA.fullDesc <> infoModHeader <> OA.progDesc "Project management commands."
@@ -93,10 +106,10 @@ versionParser =
 
 -- | CLI commands for project management.
 data ProjectCommand
-  = ProjectCommandIter Project.IterationQuery
+  = ProjectCommandIter !Project.IterationQuery
   | ProjectCommandSync
-  | ProjectCommandList OutputFormat
-  | ProjectCommandItem ProjectItemCommand
+  | ProjectCommandList !OutputFormat
+  | ProjectCommandItem !ProjectItemCommand
   deriving (Show, Eq)
 
 
