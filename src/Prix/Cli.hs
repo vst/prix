@@ -13,6 +13,7 @@ import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Lazy.Char8 as BLC
 import qualified Data.Csv as Csv
 import Data.Either (lefts, rights)
+import qualified Data.List as L
 import qualified Data.List as List
 import Data.Maybe (fromMaybe)
 import Data.String.Interpolate (i)
@@ -416,8 +417,8 @@ printProjectReview Project.MkProject {..} = do
       let byAssignee = groupItemsByAssignee xs
       forM_ byAssignee $ \(mAssignee, items) -> do
         let assigneeText = maybe "Unassigned" ("@" <>) mAssignee
-        TIO.putStrLn [i|\#\#\#\# 👤 #{assigneeText} 👍👎\n|]
-        mapM_ printProjectItemReview items
+        TIO.putStrLn [i|\#\#\#\# #{assigneeText} 👍👎\n|]
+        mapM_ TIO.putStrLn . L.sort $ fmap printProjectItemReview items
         putStrLn ""
   putStrLn ""
 
@@ -440,7 +441,7 @@ printProjectPlan Project.MkProject {..} = do
       let byAssignee = groupItemsByAssignee xs
       forM_ byAssignee $ \(mAssignee, items) -> do
         let assigneeText = maybe "Unassigned" ("@" <>) mAssignee
-        TIO.putStrLn [i|\#\#\#\# 👤 #{assigneeText}\n|]
+        TIO.putStrLn [i|\#\#\#\# #{assigneeText}\n|]
         mapM_ printProjectItemPlan items
         putStrLn ""
   putStrLn ""
@@ -460,15 +461,9 @@ groupOnKey f (x : xs) = (fx, x : yes) : groupOnKey f no
     (yes, no) = span (\y -> fx == f y) xs
 
 
-printProjectItemReview :: Project.ProjectItem -> IO ()
+printProjectItemReview :: Project.ProjectItem -> T.Text
 printProjectItemReview Project.MkProjectItem {..} = do
-  let statusEmoji = maybe "❓" Project.projectItemStatusEmoji projectItemStatus
-      stateEmoji = case projectItemContent of
-        Project.ProjectItemContentDraftIssue _ -> "⚪"
-        Project.ProjectItemContentIssue Project.MkIssueContent {..} ->
-          maybe (Project.issueStateEmoji issueContentState) Project.issueStateReasonEmoji issueContentStateReason
-        Project.ProjectItemContentPullRequest Project.MkPullRequestContent {..} ->
-          Project.pullRequestStateEmoji pullRequestContentState
+  let emoji = itemEmoji (fromMaybe Project.ProjectItemStatusInbox projectItemStatus) projectItemContent
       statusLabel = maybe "No Status" Project.projectItemStatusLabel projectItemStatus
       stateLabel = case projectItemContent of
         Project.ProjectItemContentDraftIssue _ -> "#N/A"
@@ -477,7 +472,7 @@ printProjectItemReview Project.MkProjectItem {..} = do
         Project.ProjectItemContentPullRequest Project.MkPullRequestContent {..} ->
           Project.pullRequestStateLabel pullRequestContentState
       title = truncText 80 projectItemTitle
-  TIO.putStrLn [i|- #{statusEmoji} #{stateEmoji} [#{title}](#{itemUrl}) `#{statusLabel}` `#{stateLabel}`|]
+   in [i|- #{emoji} [#{title}](#{itemUrl}) `#{statusLabel}` `#{stateLabel}`|]
   where
     itemUrl = case projectItemContent of
       Project.ProjectItemContentDraftIssue Project.MkDraftIssueContent {} -> "#"
@@ -485,11 +480,44 @@ printProjectItemReview Project.MkProjectItem {..} = do
       Project.ProjectItemContentPullRequest Project.MkPullRequestContent {..} -> pullRequestContentUrl
 
 
+itemEmoji :: Project.ProjectItemStatus -> Project.ProjectItemContent -> T.Text
+itemEmoji Project.ProjectItemStatusInbox _ = "🔴"
+itemEmoji Project.ProjectItemStatusTriage _ = "🔴"
+itemEmoji Project.ProjectItemStatusBacklog _ = "🔴"
+itemEmoji Project.ProjectItemStatusPlanned _ = "🔴"
+itemEmoji Project.ProjectItemStatusActive _ = "🔴"
+itemEmoji Project.ProjectItemStatusDone c = contentEmoji c
+
+
+contentEmoji :: Project.ProjectItemContent -> T.Text
+contentEmoji (Project.ProjectItemContentDraftIssue _) = "⚪"
+contentEmoji (Project.ProjectItemContentIssue ic) = issueEmoji ic
+contentEmoji (Project.ProjectItemContentPullRequest prc) = prEmoji prc
+
+
+issueEmoji :: Project.IssueContent -> T.Text
+issueEmoji Project.MkIssueContent {..} =
+  case (issueContentState, issueContentStateReason) of
+    (Project.IssueStateOpen, _) -> "⭕"
+    (Project.IssueStateClosed, Nothing) -> "🟣"
+    (Project.IssueStateClosed, Just Project.IssueStateReasonReopened) -> "⭕"
+    (Project.IssueStateClosed, Just Project.IssueStateReasonNotPlanned) -> "🟠"
+    (Project.IssueStateClosed, Just Project.IssueStateReasonCompleted) -> "🟢"
+    (Project.IssueStateClosed, Just Project.IssueStateReasonDuplicate) -> "⚪"
+
+
+prEmoji :: Project.PullRequestContent -> T.Text
+prEmoji Project.MkPullRequestContent {..} =
+  case pullRequestContentState of
+    Project.PullRequestStateOpen -> "⭕"
+    Project.PullRequestStateClosed -> "🟠"
+    Project.PullRequestStateMerged -> "🟢"
+
+
 printProjectItemPlan :: Project.ProjectItem -> IO ()
 printProjectItemPlan Project.MkProjectItem {..} = do
-  let statusEmoji = maybe "❓" Project.projectItemStatusEmoji projectItemStatus
-      title = truncText 80 projectItemTitle
-  TIO.putStrLn [i|- #{statusEmoji} [#{title}](#{itemUrl})|]
+  let title = truncText 80 projectItemTitle
+  TIO.putStrLn [i|- [#{title}](#{itemUrl})|]
   where
     itemUrl = case projectItemContent of
       Project.ProjectItemContentDraftIssue Project.MkDraftIssueContent {} -> "#"
