@@ -1023,17 +1023,12 @@ ghGetRateLimitRemaining = do
     Right sv -> pure sv
 
 
-getProjectData :: ConfigProject -> IO Project
+getProjectData :: ConfigProject -> IO (Either ProcessResultError Project)
 getProjectData (MkConfigProject owner number) = do
   let (entity, handle_) = case owner of
         OwnerUser l -> ("--user", l)
         OwnerOrganization l -> ("--org", l)
-  credits <- ghGetRateLimitRemaining
-  hPutStrLn stderr ("Getting project " <> T.unpack handle_ <> "/" <> show number <> " (Credits: " <> show credits <> ")")
-  res <- runProcessJSON "gh-prix-project-item-list" [entity, handle_, "--project", Z.Text.tshow number]
-  case res of
-    Left err -> printProcessResultError "gh-prix-project-item-list" err >> die "Exiting..."
-    Right sv -> pure sv
+  runProcessJSON "gh-prix-project-item-list" [entity, handle_, "--project", Z.Text.tshow number]
 
 
 -- * Helpers

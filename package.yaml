@@ -23,6 +23,7 @@ library:
     - -Wunused-packages
   dependencies:
     - aeson
+    - async-pool
     - autodocodec
     - bytestring
     - cassava

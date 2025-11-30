@@ -7,10 +7,12 @@
 module Prix.Cli where
 
 import Control.Applicative ((<**>), (<|>))
+import qualified Control.Concurrent.Async.Pool as AP
 import Control.Monad (forM_)
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Lazy.Char8 as BLC
 import qualified Data.Csv as Csv
+import Data.Either (lefts, rights)
 import qualified Data.List as List
 import Data.Maybe (fromMaybe)
 import Data.String.Interpolate (i)
@@ -24,6 +26,7 @@ import qualified Prix.Config as Config
 import qualified Prix.Meta as Meta
 import qualified Prix.Project as Project
 import System.Exit (ExitCode (..), die)
+import System.IO (hPutStrLn, stderr)
 import qualified Text.Layout.Table as Table
 import qualified Zamazingo.Text as Z.Text
 
@@ -223,12 +226,23 @@ runOptions (MkOptions mCfgPath cmd) =
 runCommandProject :: Config -> ProjectCommand -> IO ExitCode
 runCommandProject cfg (ProjectCommandIter q) = doProjectIter cfg q
 runCommandProject cfg ProjectCommandSync = do
-  projects <- mapM Project.getProjectData (configProjects cfg)
-  filePath <- Config.getAppDataFileProjectItems
-  PIO.ensureDir (P.parent filePath)
-  Aeson.encodeFile (P.toFilePath filePath) projects
-  putStrLn $ "Wrote project items to " <> P.toFilePath filePath
-  pure ExitSuccess
+  oCredits <- Project.ghGetRateLimitRemaining
+  hPutStrLn stderr $ "GitHub API credits remaining: " <> show oCredits
+  eProjects <- AP.withTaskGroup 10 $ \tgrp -> AP.mapTasks tgrp (Project.getProjectData <$> configProjects cfg)
+  ec <- case catEithers eProjects of
+    Left errs -> do
+      forM_ errs $ \err -> hPutStrLn stderr $ "Error: " <> show err
+      hPutStrLn stderr "Project synchronization failed."
+      pure (ExitFailure 1)
+    Right projects -> do
+      filePath <- Config.getAppDataFileProjectItems
+      PIO.ensureDir (P.parent filePath)
+      Aeson.encodeFile (P.toFilePath filePath) projects
+      putStrLn $ "Wrote project items to " <> P.toFilePath filePath
+      pure ExitSuccess
+  nCredits <- Project.ghGetRateLimitRemaining
+  hPutStrLn stderr $ "GitHub API credits remaining: " <> show nCredits
+  pure ec
 runCommandProject _ (ProjectCommandList fmt) = do
   filePath <- Config.getAppDataFileProjectItems
   eProjects <- Aeson.eitherDecodeFileStrict' (P.toFilePath filePath)
@@ -600,3 +614,12 @@ truncText n txt
   | T.length txt <= n = txt
   | n <= 3 = T.take n txt
   | otherwise = T.take (n - 3) txt <> "..."
+
+
+catEithers :: [Either a b] -> Either [a] [b]
+catEithers zs =
+  let ls = lefts zs
+      rs = rights zs
+   in case ls of
+        [] -> Right rs
+        _ -> Left ls
