@@ -29,6 +29,7 @@ import qualified Prix.Config as Config
 import qualified Prix.Meta as Meta
 import qualified Prix.Project as Project
 import qualified Prix.ProjectConfig as ProjectConfig
+import qualified Prix.ProjectItemCreate as ProjectItemCreate
 import System.Exit (ExitCode (..), die)
 import System.IO (hPutStrLn, stderr)
 import qualified Text.Layout.Table as Table
@@ -142,8 +143,9 @@ projectIterParser =
     <$> Project.iterationQueryParser
 
 
-newtype ProjectItemCommand
+data ProjectItemCommand
   = ProjectItemCommandList OutputFormat
+  | ProjectItemCommandCreate ProjectItemCreate.CreateOptions
   deriving (Show, Eq)
 
 
@@ -156,9 +158,12 @@ projectItemParser =
 projectItemCommandParser :: OA.Parser ProjectItemCommand
 projectItemCommandParser =
   OA.hsubparser
-    (OA.command "list" (OA.info (ProjectItemCommandList <$> outputFormatParser) infoModProjectItemList))
+    ( OA.command "list" (OA.info (ProjectItemCommandList <$> outputFormatParser) infoModProjectItemList)
+        <> OA.command "create" (OA.info (ProjectItemCommandCreate <$> ProjectItemCreate.createOptionsParser) infoModProjectItemCreate)
+    )
   where
     infoModProjectItemList = OA.fullDesc <> infoModHeader <> OA.progDesc "List project items."
+    infoModProjectItemCreate = OA.fullDesc <> infoModHeader <> OA.progDesc "Create a project item."
 
 
 -- | CLI commands for GitHub related tasks.
@@ -290,6 +295,8 @@ runCommandProject _ (ProjectCommandList fmt) = do
         , "items" Aeson..= length projectItems
         , "url" Aeson..= Project.projectMetaUrl projectMeta
         ]
+runCommandProject cfg (ProjectCommandItem (ProjectItemCommandCreate opts)) =
+  ProjectItemCreate.runCreate cfg opts
 runCommandProject _ (ProjectCommandItem (ProjectItemCommandList fmt)) = do
   filePath <- Config.getAppDataFileProjectItems
   eProjects <- Aeson.eitherDecodeFileStrict' @[Project.Project] (P.toFilePath filePath)

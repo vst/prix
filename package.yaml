@@ -28,11 +28,13 @@ library:
     - bytestring
     - cassava
     - githash
+    - haskeline
     - optparse-applicative
     - path
     - path-io
     - string-interpolate
     - table-layout
+    - temporary
     - template-haskell
     - text
     - time
