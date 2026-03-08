@@ -153,8 +153,7 @@ projectItemParser =
 projectItemCommandParser :: OA.Parser ProjectItemCommand
 projectItemCommandParser =
   OA.hsubparser
-    ( OA.command "list" (OA.info (ProjectItemCommandList <$> outputFormatParser) infoModProjectItemList)
-    )
+    (OA.command "list" (OA.info (ProjectItemCommandList <$> outputFormatParser) infoModProjectItemList))
   where
     infoModProjectItemList = OA.fullDesc <> infoModHeader <> OA.progDesc "List project items."
 
@@ -169,8 +168,7 @@ ghCommandParser :: OA.Parser Command
 ghCommandParser =
   CommandGh
     <$> OA.hsubparser
-      ( OA.command "api-limit" (OA.info ghApiLimitParser infoModGhApiLimit)
-      )
+      (OA.command "api-limit" (OA.info ghApiLimitParser infoModGhApiLimit))
   where
     infoModGhApiLimit = OA.fullDesc <> infoModHeader <> OA.progDesc "GitHub API Remaining Limit."
 
