@@ -2,7 +2,7 @@
   description = "prix - Value-First Work Planning";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-25.05";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-25.11";
     flake-parts.url = "github:hercules-ci/flake-parts";
   };
 
@@ -51,7 +51,7 @@
             ## Build inputs for development shell:
             buildInputs = scripts ++ [
               ## Haskell related build inputs:
-              thisHaskell.apply-refact
+              # thisHaskell.apply-refact  ## TODO: Re-enable once we switch to a newer GHC that supports it.
               thisHaskell.cabal-fmt
               thisHaskell.cabal-install
               thisHaskell.cabal2nix
@@ -69,7 +69,7 @@
               pkgs.git
               pkgs.nil
               pkgs.nixpkgs-fmt
-              pkgs.nodePackages.prettier
+              pkgs.prettier
               pkgs.upx
             ];
           };
