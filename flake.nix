@@ -83,10 +83,6 @@
               ];
 
               postFixup = (oldAttrs.postFixup or "") + ''
-                ## Create output directories:
-                mkdir -p $out/{bin}
-
-                ## Wrap program to add PATHs to dependencies:
                 wrapProgram $out/bin/${package.name} --prefix PATH : ${pkgs.lib.makeBinPath scripts}
               '';
             })
