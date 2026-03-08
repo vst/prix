@@ -12,9 +12,10 @@ import Control.Monad (forM_)
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Lazy.Char8 as BLC
 import qualified Data.Csv as Csv
-import Data.Either (lefts, rights)
+import Data.Either (fromLeft, lefts, rights)
 import qualified Data.List as L
 import qualified Data.List as List
+import qualified Data.List.NonEmpty as NE
 import Data.Maybe (fromMaybe)
 import Data.String.Interpolate (i)
 import qualified Data.Text as T
@@ -22,10 +23,14 @@ import qualified Data.Text.IO as TIO
 import qualified Options.Applicative as OA
 import qualified Path as P
 import qualified Path.IO as PIO
+import qualified Prix.Commons as Commons
 import Prix.Config (Config (..), readConfig, readConfigFromFile)
 import qualified Prix.Config as Config
 import qualified Prix.Meta as Meta
 import qualified Prix.Project as Project
+import qualified Prix.ProjectConfig as ProjectConfig
+import qualified Prix.ProjectItemCreate as ProjectItemCreate
+import qualified Prix.ProjectItemEdit as ProjectItemEdit
 import System.Exit (ExitCode (..), die)
 import System.IO (hPutStrLn, stderr)
 import qualified Text.Layout.Table as Table
@@ -139,8 +144,10 @@ projectIterParser =
     <$> Project.iterationQueryParser
 
 
-newtype ProjectItemCommand
+data ProjectItemCommand
   = ProjectItemCommandList OutputFormat
+  | ProjectItemCommandCreate ProjectItemCreate.CreateOptions
+  | ProjectItemCommandEdit ProjectItemEdit.EditOptions
   deriving (Show, Eq)
 
 
@@ -154,9 +161,13 @@ projectItemCommandParser :: OA.Parser ProjectItemCommand
 projectItemCommandParser =
   OA.hsubparser
     ( OA.command "list" (OA.info (ProjectItemCommandList <$> outputFormatParser) infoModProjectItemList)
+        <> OA.command "create" (OA.info (ProjectItemCommandCreate <$> ProjectItemCreate.createOptionsParser) infoModProjectItemCreate)
+        <> OA.command "edit" (OA.info (ProjectItemCommandEdit <$> ProjectItemEdit.editOptionsParser) infoModProjectItemEdit)
     )
   where
     infoModProjectItemList = OA.fullDesc <> infoModHeader <> OA.progDesc "List project items."
+    infoModProjectItemCreate = OA.fullDesc <> infoModHeader <> OA.progDesc "Create a project item."
+    infoModProjectItemEdit = OA.fullDesc <> infoModHeader <> OA.progDesc "Edit a project item."
 
 
 -- | CLI commands for GitHub related tasks.
@@ -169,8 +180,7 @@ ghCommandParser :: OA.Parser Command
 ghCommandParser =
   CommandGh
     <$> OA.hsubparser
-      ( OA.command "api-limit" (OA.info ghApiLimitParser infoModGhApiLimit)
-      )
+      (OA.command "api-limit" (OA.info ghApiLimitParser infoModGhApiLimit))
   where
     infoModGhApiLimit = OA.fullDesc <> infoModHeader <> OA.progDesc "GitHub API Remaining Limit."
 
@@ -227,21 +237,30 @@ runOptions (MkOptions mCfgPath cmd) =
 runCommandProject :: Config -> ProjectCommand -> IO ExitCode
 runCommandProject cfg (ProjectCommandIter q) = doProjectIter cfg q
 runCommandProject cfg ProjectCommandSync = do
-  oCredits <- Project.ghGetRateLimitRemaining
+  oCredits <- Commons.ghGetRateLimitRemaining
   hPutStrLn stderr $ "GitHub API credits remaining: " <> show oCredits
   eProjects <- AP.withTaskGroup 10 $ \tgrp -> AP.mapTasks tgrp (Project.getProjectData <$> configProjects cfg)
-  ec <- case catEithers eProjects of
-    Left errs -> do
-      forM_ errs $ \err -> hPutStrLn stderr $ "Error: " <> show err
+  eConfigs <- AP.withTaskGroup 10 $ \tgrp -> AP.mapTasks tgrp (ProjectConfig.getProjectConfigData <$> configProjects cfg)
+  let projectResult = catEithers eProjects
+      configResult = catEithers eConfigs
+  ec <- case (projectResult, configResult) of
+    (Right projects, Right configs) -> do
+      projectItemsPath <- Config.getAppDataFileProjectItems
+      projectConfigPath <- Config.getAppDataFileProjectConfig
+      PIO.ensureDir (P.parent projectItemsPath)
+      Aeson.encodeFile (P.toFilePath projectItemsPath) projects
+      Aeson.encodeFile (P.toFilePath projectConfigPath) configs
+      putStrLn $ "Wrote project items to " <> P.toFilePath projectItemsPath
+      putStrLn $ "Wrote project config to " <> P.toFilePath projectConfigPath
+      pure ExitSuccess
+    _ -> do
+      forM_ (fromLeft [] projectResult) $ \err ->
+        Commons.printProcessResultError "gh-prix-project-item-list" err
+      forM_ (fromLeft [] configResult) $ \err ->
+        Commons.printProcessResultError "gh-prix-project-config" err
       hPutStrLn stderr "Project synchronization failed."
       pure (ExitFailure 1)
-    Right projects -> do
-      filePath <- Config.getAppDataFileProjectItems
-      PIO.ensureDir (P.parent filePath)
-      Aeson.encodeFile (P.toFilePath filePath) projects
-      putStrLn $ "Wrote project items to " <> P.toFilePath filePath
-      pure ExitSuccess
-  nCredits <- Project.ghGetRateLimitRemaining
+  nCredits <- Commons.ghGetRateLimitRemaining
   hPutStrLn stderr $ "GitHub API credits remaining: " <> show nCredits
   pure ec
 runCommandProject _ (ProjectCommandList fmt) = do
@@ -266,7 +285,7 @@ runCommandProject _ (ProjectCommandList fmt) = do
   where
     header = ["Owner", "Name", "Number", "Items", "URL"]
     getProjectRow Project.MkProject {..} =
-      [ Project.projectOwnerLogin projectOwner
+      [ Commons.ownerLogin projectOwner
       , Project.projectMetaTitle projectMeta
       , Z.Text.tshow $ Project.projectMetaNumber projectMeta
       , Z.Text.tshow $ length projectItems
@@ -274,12 +293,16 @@ runCommandProject _ (ProjectCommandList fmt) = do
       ]
     getProjectObj Project.MkProject {..} =
       Aeson.object
-        [ "owner" Aeson..= Project.projectOwnerLogin projectOwner
+        [ "owner" Aeson..= Commons.ownerLogin projectOwner
         , "name" Aeson..= Project.projectMetaTitle projectMeta
         , "number" Aeson..= Project.projectMetaNumber projectMeta
         , "items" Aeson..= length projectItems
         , "url" Aeson..= Project.projectMetaUrl projectMeta
         ]
+runCommandProject cfg (ProjectCommandItem (ProjectItemCommandCreate opts)) =
+  ProjectItemCreate.runCreate cfg opts
+runCommandProject cfg (ProjectCommandItem (ProjectItemCommandEdit opts)) =
+  ProjectItemEdit.runEdit cfg opts
 runCommandProject _ (ProjectCommandItem (ProjectItemCommandList fmt)) = do
   filePath <- Config.getAppDataFileProjectItems
   eProjects <- Aeson.eitherDecodeFileStrict' @[Project.Project] (P.toFilePath filePath)
@@ -308,7 +331,7 @@ runCommandProject _ (ProjectCommandItem (ProjectItemCommandList fmt)) = do
       , "ID"
       , "Created At"
       , "Title"
-      , "Assignee"
+      , "Assignees"
       , "Status"
       , "Iteration"
       , "Urgency"
@@ -329,7 +352,7 @@ runCommandProject _ (ProjectCommandItem (ProjectItemCommandList fmt)) = do
       , "Content Issue Type"
       ]
     getProjectRows Project.MkProject {..} =
-      let pOwner = Project.projectOwnerLogin projectOwner
+      let pOwner = Commons.ownerLogin projectOwner
           pTitle = Project.projectMetaTitle projectMeta
           pNumber = Z.Text.tshow $ Project.projectMetaNumber projectMeta
           pUrl = Project.projectMetaUrl projectMeta
@@ -341,7 +364,7 @@ runCommandProject _ (ProjectCommandItem (ProjectItemCommandList fmt)) = do
             , projectItemId
             , Z.Text.tshow projectItemCreatedAt
             , projectItemTitle
-            , fromMaybe "" projectItemAssignee
+            , renderAssignees projectItemAssignees
             , maybe "" Project.projectItemStatusLabel projectItemStatus
             , maybe "" Z.Text.tshow projectItemIteration
             , maybe "" Project.projectItemUrgencyLabel projectItemUrgency
@@ -389,7 +412,7 @@ runCommandProject _ (ProjectCommandItem (ProjectItemCommandList fmt)) = do
 
 runCommandGh :: Config -> GhCommand -> IO ExitCode
 runCommandGh _ GhCommandApiLimit = do
-  limit <- Project.ghGetRateLimitRemaining
+  limit <- Commons.ghGetRateLimitRemaining
   print limit
   pure ExitSuccess
 
@@ -408,9 +431,9 @@ doReviewIteration cfg iter = do
 
 printProjectReview :: Project.Project -> IO ()
 printProjectReview Project.MkProject {..} = do
-  let Project.MkProjectOwner {..} = projectOwner
+  let Commons.MkOwner {..} = projectOwner
       Project.MkProjectMeta {..} = projectMeta
-  TIO.putStrLn [i|\#\#\# [#{projectOwnerLogin}/#{projectMetaTitle}](#{projectMetaUrl}) 👍👎\n|]
+  TIO.putStrLn [i|\#\#\# [#{ownerLogin}/#{projectMetaTitle}](#{projectMetaUrl}) 👍👎\n|]
   case projectItems of
     [] -> TIO.putStrLn "_No items for this iteration._\n"
     xs -> do
@@ -432,9 +455,9 @@ doPlanIteration cfg iter = do
 
 printProjectPlan :: Project.Project -> IO ()
 printProjectPlan Project.MkProject {..} = do
-  let Project.MkProjectOwner {..} = projectOwner
+  let Commons.MkOwner {..} = projectOwner
       Project.MkProjectMeta {..} = projectMeta
-  TIO.putStrLn [i|\#\#\# [#{projectOwnerLogin}/#{projectMetaTitle}](#{projectMetaUrl})\n|]
+  TIO.putStrLn [i|\#\#\# [#{ownerLogin}/#{projectMetaTitle}](#{projectMetaUrl})\n|]
   case projectItems of
     [] -> TIO.putStrLn "_No items for this iteration._\n"
     xs -> do
@@ -448,8 +471,15 @@ printProjectPlan Project.MkProject {..} = do
 
 
 groupItemsByAssignee :: [Project.ProjectItem] -> [(Maybe T.Text, [Project.ProjectItem])]
-groupItemsByAssignee =
-  groupOnKey Project.projectItemAssignee . List.sortOn Project.projectItemAssignee
+groupItemsByAssignee items =
+  fmap stripGroup grouped
+  where
+    grouped = groupOnKey fst (List.sortOn fst (concatMap explode items))
+    stripGroup (assignee, pairs) = (assignee, fmap snd pairs)
+    explode item =
+      case Project.projectItemAssignees item of
+        Nothing -> [(Nothing, item)]
+        Just assignees -> fmap (\login -> (Just login, item)) (NE.toList assignees)
 
 
 -- From extras:
@@ -642,6 +672,11 @@ truncText n txt
   | T.length txt <= n = txt
   | n <= 3 = T.take n txt
   | otherwise = T.take (n - 3) txt <> "..."
+
+
+renderAssignees :: Maybe (NE.NonEmpty T.Text) -> T.Text
+renderAssignees =
+  maybe "" (T.intercalate ", " . NE.toList)
 
 
 catEithers :: [Either a b] -> Either [a] [b]

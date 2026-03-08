@@ -129,6 +129,11 @@ getAppDataFileProjectItems =
   (P.</> $(P.mkRelFile "project-items.json")) <$> getAppDataDir
 
 
+getAppDataFileProjectConfig :: MonadIO m => m (P.Path P.Abs P.File)
+getAppDataFileProjectConfig =
+  (P.</> $(P.mkRelFile "project-config.json")) <$> getAppDataDir
+
+
 -- * Application Directories
 
 

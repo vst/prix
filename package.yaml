@@ -4,7 +4,7 @@ github: "vst/prix"
 license: MIT
 author: "Vehbi Sinan Tunalioglu"
 maintainer: "vst@vsthost.com"
-copyright: "Copyright (c) 2025 Vehbi Sinan Tunalioglu"
+copyright: "Copyright (c) 2025-2026 Vehbi Sinan Tunalioglu"
 
 extra-source-files:
   - README.md
@@ -28,11 +28,13 @@ library:
     - bytestring
     - cassava
     - githash
+    - haskeline
     - optparse-applicative
     - path
     - path-io
     - string-interpolate
     - table-layout
+    - temporary
     - template-haskell
     - text
     - time

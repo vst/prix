@@ -1,0 +1,14 @@
+overrides:
+  - files:
+      - "*.md"
+    options:
+      proseWrap: "always"
+      printWidth: 80
+  - files:
+      - "*.yaml"
+      - "*.yml"
+    options:
+      printWidth: 120
+      tabWidth: 2
+      singleQuote: false
+      trailingComma: "es5"
