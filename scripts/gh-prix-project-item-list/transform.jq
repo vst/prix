@@ -32,7 +32,11 @@ def extract_project_item:
         score: (.score | if . then .value else null end),
         title: .content.title,
         createdAt: .content.createdAt,
-        assignee: .content.assignees.nodes[0].login,
+        assignees: (
+          .content.assignees.nodes
+          | map(.login)
+          | if length > 0 then (. | sort) else null end
+        ),
         body: .content.body,
         content: {
           type: .type,

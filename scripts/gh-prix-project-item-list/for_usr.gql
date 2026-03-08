@@ -73,7 +73,7 @@ fragment ThisProjectItemContent on ProjectV2ItemContent {
     id
     title
     createdAt
-    assignees(first: 1) {
+    assignees(first: 100) {
       nodes {
         login
       }
@@ -89,7 +89,7 @@ fragment ThisProjectItemContent on ProjectV2ItemContent {
     url
     title
     createdAt
-    assignees(first: 1) {
+    assignees(first: 100) {
       nodes {
         login
       }
@@ -110,7 +110,7 @@ fragment ThisProjectItemContent on ProjectV2ItemContent {
     url
     title
     createdAt
-    assignees(first: 1) {
+    assignees(first: 100) {
       nodes {
         login
       }

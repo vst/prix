@@ -16,6 +16,7 @@ import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Lazy.Char8 as BLC
 import Data.Fixed (Milli)
 import qualified Data.HashMap.Strict as HashMap
+import qualified Data.List.NonEmpty as NE
 import qualified Data.Text as T
 import qualified Data.Time as Time
 import GHC.Generics (Generic)
@@ -109,7 +110,7 @@ data ProjectItem = MkProjectItem
   , projectItemScore :: !(Maybe Milli)
   , projectItemTitle :: !T.Text
   , projectItemCreatedAt :: !Time.UTCTime
-  , projectItemAssignee :: !(Maybe T.Text)
+  , projectItemAssignees :: !(Maybe (NE.NonEmpty T.Text))
   , projectItemBody :: !(Maybe T.Text)
   , projectItemContent :: !ProjectItemContent
   }
@@ -134,7 +135,7 @@ instance ADC.HasCodec ProjectItem where
         <*> ADC.requiredField "score" "Priority Score" ADC..= projectItemScore
         <*> ADC.requiredField "title" "Item Title" ADC..= projectItemTitle
         <*> ADC.requiredField "createdAt" "Creation Time" ADC..= projectItemCreatedAt
-        <*> ADC.requiredField "assignee" "Assignee Login" ADC..= projectItemAssignee
+        <*> ADC.requiredField "assignees" "Assignee Logins" ADC..= projectItemAssignees
         <*> ADC.requiredField "body" "Item Body" ADC..= projectItemBody
         <*> ADC.requiredField "content" "Item Content" ADC..= projectItemContent
 

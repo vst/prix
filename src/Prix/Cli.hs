@@ -15,6 +15,7 @@ import qualified Data.Csv as Csv
 import Data.Either (lefts, rights)
 import qualified Data.List as L
 import qualified Data.List as List
+import qualified Data.List.NonEmpty as NE
 import Data.Maybe (fromMaybe)
 import Data.String.Interpolate (i)
 import qualified Data.Text as T
@@ -306,7 +307,7 @@ runCommandProject _ (ProjectCommandItem (ProjectItemCommandList fmt)) = do
       , "ID"
       , "Created At"
       , "Title"
-      , "Assignee"
+      , "Assignees"
       , "Status"
       , "Iteration"
       , "Urgency"
@@ -339,7 +340,7 @@ runCommandProject _ (ProjectCommandItem (ProjectItemCommandList fmt)) = do
             , projectItemId
             , Z.Text.tshow projectItemCreatedAt
             , projectItemTitle
-            , fromMaybe "" projectItemAssignee
+            , renderAssignees projectItemAssignees
             , maybe "" Project.projectItemStatusLabel projectItemStatus
             , maybe "" Z.Text.tshow projectItemIteration
             , maybe "" Project.projectItemUrgencyLabel projectItemUrgency
@@ -446,8 +447,15 @@ printProjectPlan Project.MkProject {..} = do
 
 
 groupItemsByAssignee :: [Project.ProjectItem] -> [(Maybe T.Text, [Project.ProjectItem])]
-groupItemsByAssignee =
-  groupOnKey Project.projectItemAssignee . List.sortOn Project.projectItemAssignee
+groupItemsByAssignee items =
+  fmap stripGroup grouped
+  where
+    grouped = groupOnKey fst (List.sortOn fst (concatMap explode items))
+    stripGroup (assignee, pairs) = (assignee, fmap snd pairs)
+    explode item =
+      case Project.projectItemAssignees item of
+        Nothing -> [(Nothing, item)]
+        Just assignees -> fmap (\login -> (Just login, item)) (NE.toList assignees)
 
 
 -- From extras:
@@ -640,6 +648,11 @@ truncText n txt
   | T.length txt <= n = txt
   | n <= 3 = T.take n txt
   | otherwise = T.take (n - 3) txt <> "..."
+
+
+renderAssignees :: Maybe (NE.NonEmpty T.Text) -> T.Text
+renderAssignees =
+  maybe "" (T.intercalate ", " . NE.toList)
 
 
 catEithers :: [Either a b] -> Either [a] [b]
