@@ -1,0 +1,62 @@
+fragment ThisOwner on Actor {
+  login
+  url
+  avatarUrl
+}
+
+fragment ThisProject on ProjectV2 {
+  id
+  number
+  title
+  url
+  shortDescription
+  readme
+}
+
+fragment ThisProjectField on ProjectV2FieldConfiguration {
+  __typename
+  ... on ProjectV2FieldCommon {
+    id
+    name
+    dataType
+  }
+  ... on ProjectV2IterationField {
+    configuration {
+      duration
+      startDay
+      iterations {
+        id
+        duration
+        startDate
+        title
+      }
+    }
+  }
+  ... on ProjectV2SingleSelectField {
+    options {
+      id
+      name
+      color
+      description
+    }
+  }
+}
+
+query ($login: String!, $number: Int!, $endCursor: String) {
+  owner: user(login: $login) {
+    type: __typename
+    ...ThisOwner
+    projectV2(number: $number) {
+      ...ThisProject
+      fields(first: 100, after: $endCursor) {
+        nodes {
+          ...ThisProjectField
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+      }
+    }
+  }
+}

@@ -19,10 +19,12 @@
           package = readYAML ./package.yaml;
 
           ## Build individual scripts:
+          gh-prix-project-config = pkgs.callPackage ./scripts/gh-prix-project-config { };
           gh-prix-project-item-list = pkgs.callPackage ./scripts/gh-prix-project-item-list { };
 
           ## Build a list of all scripts:
           scripts = [
+            gh-prix-project-config
             gh-prix-project-item-list
           ];
 
