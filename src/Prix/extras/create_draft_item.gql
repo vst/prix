@@ -1,0 +1,19 @@
+mutation (
+  $projectId: ID!
+  $title: String!
+  $body: String
+  $assigneeIds: [ID!]
+) {
+  addProjectV2DraftIssue(
+    input: {
+      projectId: $projectId
+      title: $title
+      body: $body
+      assigneeIds: $assigneeIds
+    }
+  ) {
+    projectItem {
+      id
+    }
+  }
+}

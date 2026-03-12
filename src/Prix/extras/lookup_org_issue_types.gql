@@ -1,0 +1,10 @@
+query ($org: String!) {
+  organization(login: $org) {
+    issueTypes(first: 20) {
+      nodes {
+        id
+        name
+      }
+    }
+  }
+}

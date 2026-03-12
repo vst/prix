@@ -23,12 +23,13 @@ library:
     - -Wunused-packages
   dependencies:
     - aeson
+    - ansi-terminal
     - async-pool
     - autodocodec
     - bytestring
     - cassava
+    - file-embed
     - githash
-    - haskeline
     - optparse-applicative
     - path
     - path-io

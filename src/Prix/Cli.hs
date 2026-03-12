@@ -23,14 +23,14 @@ import qualified Data.Text.IO as TIO
 import qualified Options.Applicative as OA
 import qualified Path as P
 import qualified Path.IO as PIO
+import qualified Prix.Cli.Project.Item.Create as ProjectItemCreate
+import qualified Prix.Cli.Project.Item.Edit as ProjectItemEdit
 import qualified Prix.Commons as Commons
 import Prix.Config (Config (..), readConfig, readConfigFromFile)
 import qualified Prix.Config as Config
 import qualified Prix.Meta as Meta
 import qualified Prix.Project as Project
 import qualified Prix.ProjectConfig as ProjectConfig
-import qualified Prix.ProjectItemCreate as ProjectItemCreate
-import qualified Prix.ProjectItemEdit as ProjectItemEdit
 import System.Exit (ExitCode (..), die)
 import System.IO (hPutStrLn, stderr)
 import qualified Text.Layout.Table as Table
