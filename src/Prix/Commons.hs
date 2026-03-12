@@ -110,6 +110,23 @@ optionColorEmoji OptionColorPink = "🟫" -- No pink square, hence the brown squ
 optionColorEmoji OptionColorPurple = "🟪"
 
 
+-- * Org Issue Types
+
+
+data OrgIssueType = MkOrgIssueType
+  { orgIssueTypeId :: !T.Text
+  , orgIssueTypeName :: !T.Text
+  }
+  deriving (Show, Eq)
+
+
+instance Aeson.FromJSON OrgIssueType where
+  parseJSON = Aeson.withObject "OrgIssueType" $ \o ->
+    MkOrgIssueType
+      <$> o Aeson..: "id"
+      <*> o Aeson..: "name"
+
+
 -- * GH helpers
 
 
@@ -119,6 +136,30 @@ ghGetRateLimitRemaining = do
   case res of
     Left err -> printProcessResultError "gh-api-rate-limit" err >> die "Exiting..."
     Right sv -> pure sv
+
+
+-- | Fetch the issue types defined for a GitHub organization.
+-- Returns an empty list if the login is not an organization or has no issue types.
+ghGetOrgIssueTypes :: T.Text -> IO [OrgIssueType]
+ghGetOrgIssueTypes org = do
+  let query = $(embedStringFile "./src/Prix/extras/lookup_org_issue_types.gql") :: T.Text
+  res <-
+    runProcessBLC
+      "gh"
+      [ "api"
+      , "graphql"
+      , "--field"
+      , [i|query=#{query}|]
+      , "--field"
+      , [i|org=#{org}|]
+      , "--jq"
+      , ".data.organization.issueTypes.nodes // []"
+      ]
+  case res of
+    Left _ -> pure []
+    Right sv -> case Aeson.eitherDecode sv of
+      Left _ -> pure []
+      Right types -> pure types
 
 
 ghLookupUserId :: T.Text -> IO (Either String T.Text)
@@ -163,8 +204,8 @@ ghLookupRepoId owner name = do
     Right sv -> Right (T.strip (T.pack (BLC.unpack sv)))
 
 
-ghCreateIssue :: T.Text -> T.Text -> T.Text -> [T.Text] -> IO (Either String T.Text)
-ghCreateIssue repoId title body assigneeIds = do
+ghCreateIssue :: T.Text -> T.Text -> T.Text -> [T.Text] -> Maybe T.Text -> IO (Either String T.Text)
+ghCreateIssue repoId title body assigneeIds mIssueTypeId = do
   let query = $(embedStringFile "./src/Prix/extras/create_issue.gql") :: T.Text
   let input =
         Aeson.object
@@ -175,6 +216,7 @@ ghCreateIssue repoId title body assigneeIds = do
                 , "title" Aeson..= title
                 , "body" Aeson..= body
                 , "assigneeIds" Aeson..= assigneeIds
+                , "issueTypeId" Aeson..= mIssueTypeId
                 ]
           ]
   res <-
@@ -330,8 +372,8 @@ ghUpdateDraftIssue draftId title mBody = do
     Right sv -> Right (T.strip (T.pack (BLC.unpack sv)))
 
 
-ghUpdateIssue :: T.Text -> T.Text -> Maybe T.Text -> IO (Either String T.Text)
-ghUpdateIssue issueId title mBody = do
+ghUpdateIssue :: T.Text -> T.Text -> Maybe T.Text -> Maybe T.Text -> IO (Either String T.Text)
+ghUpdateIssue issueId title mBody mIssueTypeId = do
   let query = $(embedStringFile "./src/Prix/extras/update_issue.gql") :: T.Text
   let input =
         Aeson.object
@@ -341,6 +383,7 @@ ghUpdateIssue issueId title mBody = do
                 [ "issueId" Aeson..= issueId
                 , "title" Aeson..= title
                 , "body" Aeson..= mBody
+                , "issueTypeId" Aeson..= mIssueTypeId
                 ]
           ]
   res <-

@@ -1,10 +1,17 @@
-mutation ($repoId: ID!, $title: String!, $body: String, $assigneeIds: [ID!]) {
+mutation (
+  $repoId: ID!
+  $title: String!
+  $body: String
+  $assigneeIds: [ID!]
+  $issueTypeId: ID
+) {
   createIssue(
     input: {
       repositoryId: $repoId
       title: $title
       body: $body
       assigneeIds: $assigneeIds
+      issueTypeId: $issueTypeId
     }
   ) {
     issue {

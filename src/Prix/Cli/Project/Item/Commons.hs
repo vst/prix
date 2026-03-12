@@ -22,6 +22,7 @@ import qualified Prix.Config as Config
 import qualified Prix.Project as Project
 import qualified Prix.ProjectConfig as ProjectConfig
 import System.Exit (die)
+import System.IO (hPutStrLn, stderr)
 import qualified Zamazingo.Terminal.Prompts as Z.Term.Prompts
 
 
@@ -61,6 +62,41 @@ promptSelectOptional _ _ mDef [] = pure mDef
 promptSelectOptional label asText mDef items = do
   mChoice <- Z.Term.Prompts.choose label asText mDef items
   pure (mChoice <|> mDef)
+
+
+-- * Issue Types
+
+
+-- | Fetch issue types available for the org that owns the given @owner/repo@ string.
+-- Returns an empty list for user-owned repos or unrecognised formats.
+getRepoOrgIssueTypes :: T.Text -> IO [Commons.OrgIssueType]
+getRepoOrgIssueTypes repo =
+  case T.splitOn "/" repo of
+    [owner, _] -> Commons.ghGetOrgIssueTypes owner
+    _ -> pure []
+
+
+-- | Filter the 'Project.IssueType' enum to only those whose labels match a name in
+-- the provided org issue type list.
+matchingIssueTypes :: [Commons.OrgIssueType] -> [Project.IssueType]
+matchingIssueTypes orgTypes =
+  filter hasMatch [minBound .. maxBound]
+  where
+    hasMatch t = any (\ot -> T.toLower (Commons.orgIssueTypeName ot) == T.toLower (Project.issueTypeLabel t)) orgTypes
+
+
+-- | Resolve a 'Project.IssueType' to the org-specific GitHub ID.
+-- Returns 'Nothing' and emits a warning when the type is not found in the org.
+resolveIssueTypeId :: [Commons.OrgIssueType] -> Maybe Project.IssueType -> IO (Maybe T.Text)
+resolveIssueTypeId _ Nothing = pure Nothing
+resolveIssueTypeId orgTypes (Just issueType) =
+  case L.find matches orgTypes of
+    Nothing -> do
+      hPutStrLn stderr ("Warning: issue type \"" <> T.unpack (Project.issueTypeLabel issueType) <> "\" not found in org. Skipping.")
+      pure Nothing
+    Just ot -> pure (Just (Commons.orgIssueTypeId ot))
+  where
+    matches ot = T.toLower (Commons.orgIssueTypeName ot) == T.toLower (Project.issueTypeLabel issueType)
 
 
 -- * Assignees

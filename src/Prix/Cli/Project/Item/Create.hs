@@ -46,6 +46,7 @@ data CreateOptions = MkCreateOptions
   , createOptDifficulty :: !(Maybe Project.ProjectItemDifficulty)
   , createOptConfidence :: !(Maybe Project.ProjectItemConfidence)
   , createOptTheme :: !(Maybe Project.ProjectItemTheme)
+  , createOptIssueType :: !(Maybe Project.IssueType)
   }
   deriving (Show, Eq, Generic)
 
@@ -69,6 +70,7 @@ createOptionsParser =
     <*> difficultyP
     <*> confidenceP
     <*> themeP
+    <*> issueTypeP
   where
     interactiveP = OA.switch (OA.long "interactive" <> OA.short 'i' <> OA.help "Run in interactive mode.")
     ownerP = OA.optional (T.pack <$> OA.strOption (OA.long "owner" <> OA.metavar "LOGIN" <> OA.help "Project owner login to disambiguate."))
@@ -85,6 +87,7 @@ createOptionsParser =
     difficultyP = OA.optional (OA.option (Item.Commons.parseEnumOption Project.projectItemDifficultyLabel) (OA.long "difficulty" <> OA.metavar "DIFFICULTY" <> OA.help "Difficulty level."))
     confidenceP = OA.optional (OA.option (Item.Commons.parseEnumOption Project.projectItemConfidenceLabel) (OA.long "confidence" <> OA.metavar "CONFIDENCE" <> OA.help "Confidence level."))
     themeP = OA.optional (OA.option (Item.Commons.parseEnumOption Project.projectItemThemeLabel) (OA.long "theme" <> OA.metavar "THEME" <> OA.help "Strategic theme."))
+    issueTypeP = OA.optional (OA.option (Item.Commons.parseEnumOption Project.issueTypeLabel) (OA.long "issue-type" <> OA.metavar "TYPE" <> OA.help "Issue type (org repos only)."))
 
 
 -- * Runner
@@ -146,6 +149,7 @@ data CreateInputs = MkCreateInputs
   , createDifficulty :: !(Maybe Project.ProjectItemDifficulty)
   , createConfidence :: !(Maybe Project.ProjectItemConfidence)
   , createTheme :: !(Maybe Project.ProjectItemTheme)
+  , createIssueType :: !(Maybe Project.IssueType)
   }
   deriving (Show, Eq)
 
@@ -166,6 +170,7 @@ toInputs (repo, title, body) MkCreateOptions {..} =
     , createDifficulty = createOptDifficulty
     , createConfidence = createOptConfidence
     , createTheme = createOptTheme
+    , createIssueType = createOptIssueType
     }
 
 
@@ -190,15 +195,17 @@ createFromNewIssue cfg inputs@MkCreateInputs {..} assigneeIds = do
     [o, n] -> pure (o, n)
     _ -> die "Repository must be in OWNER/REPO format."
   repoId <- Commons.ghLookupRepoId repoOwner repoName >>= either die pure
-  issueId <- createIssue repoId inputs assigneeIds
+  orgIssueTypes <- Commons.ghGetOrgIssueTypes repoOwner
+  mIssueTypeId <- Item.Commons.resolveIssueTypeId orgIssueTypes createIssueType
+  issueId <- createIssue repoId inputs mIssueTypeId assigneeIds
   addItemToProject cfg issueId
 
 
-createIssue :: T.Text -> CreateInputs -> [T.Text] -> IO T.Text
-createIssue repoId MkCreateInputs {..} assigneeIds = do
+createIssue :: T.Text -> CreateInputs -> Maybe T.Text -> [T.Text] -> IO T.Text
+createIssue repoId MkCreateInputs {..} mIssueTypeId assigneeIds = do
   let title = fromMaybe "[Undefined Title]" createTitle
       body = fromMaybe "[Undefined Body]" createBody
-  Commons.ghCreateIssue repoId title body assigneeIds >>= either die pure
+  Commons.ghCreateIssue repoId title body assigneeIds mIssueTypeId >>= either die pure
 
 
 addItemToProject :: ProjectConfig.ProjectConfig -> T.Text -> IO T.Text
@@ -268,9 +275,11 @@ promptProjectConfig' mDef config =
 promptInputs :: ProjectConfig.ProjectConfig -> (Maybe T.Text, Maybe T.Text, Maybe T.Text) -> CreateOptions -> IO CreateInputs
 promptInputs cfg (repoDefault, titleDefault, bodyDefault) MkCreateOptions {..} = do
   createRepo <- Z.Term.Prompts.text "Repository (owner/repo)" repoDefault
+  orgIssueTypes <- maybe (pure []) Item.Commons.getRepoOrgIssueTypes createRepo
   createTitle <- Z.Term.Prompts.text "Title" titleDefault
   createBody <- Z.Term.Prompts.multilineText "Body" bodyDefault
   createAssignees <- Item.Commons.promptAssignees createOptAssignees
+  createIssueType <- Item.Commons.promptSelectOptional "Issue Type" Project.issueTypeLabel createOptIssueType (Item.Commons.matchingIssueTypes orgIssueTypes)
   createStatus <- Z.Term.Prompts.choose "Status" Project.projectItemStatusLabel createOptStatus Z.Base.enumerate
   createIteration <- Z.Term.Prompts.choose "Iteration" Z.Text.tshow createOptIteration (fmap fst (Item.Commons.projectConfigIterations cfg))
   createUrgency <- Z.Term.Prompts.choose "Urgency" Project.projectItemUrgencyLabel createOptUrgency Z.Base.enumerate

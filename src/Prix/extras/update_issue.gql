@@ -1,5 +1,12 @@
-mutation ($issueId: ID!, $title: String!, $body: String) {
-  updateIssue(input: { id: $issueId, title: $title, body: $body }) {
+mutation ($issueId: ID!, $title: String!, $body: String, $issueTypeId: ID) {
+  updateIssue(
+    input: {
+      id: $issueId
+      title: $title
+      body: $body
+      issueTypeId: $issueTypeId
+    }
+  ) {
     issue {
       id
     }

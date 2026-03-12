@@ -51,6 +51,7 @@ data EditOptions = MkEditOptions
   , editOptDifficulty :: !(Update Project.ProjectItemDifficulty)
   , editOptConfidence :: !(Update Project.ProjectItemConfidence)
   , editOptTheme :: !(Update Project.ProjectItemTheme)
+  , editOptIssueType :: !(Update Project.IssueType)
   }
   deriving (Show, Eq, Generic)
 
@@ -72,6 +73,7 @@ editOptionsParser =
     <*> difficultyP
     <*> confidenceP
     <*> themeP
+    <*> issueTypeP
   where
     interactiveP = OA.switch (OA.long "interactive" <> OA.short 'i' <> OA.help "Run in interactive mode.")
     itemIdP = OA.optional (T.pack <$> OA.strOption (OA.long "id" <> OA.metavar "ITEM_ID" <> OA.help "Project item ID."))
@@ -92,6 +94,7 @@ editOptionsParser =
     difficultyP = updateFieldParser "difficulty" (Item.Commons.parseEnumOption Project.projectItemDifficultyLabel) "Difficulty level."
     confidenceP = updateFieldParser "confidence" (Item.Commons.parseEnumOption Project.projectItemConfidenceLabel) "Confidence level."
     themeP = updateFieldParser "theme" (Item.Commons.parseEnumOption Project.projectItemThemeLabel) "Strategic theme."
+    issueTypeP = updateFieldParser "issue-type" (Item.Commons.parseEnumOption Project.issueTypeLabel) "Issue type (org repos only)."
 
 
 -- * Runner
@@ -110,7 +113,7 @@ runEdit _cfg opts = do
   let current = currentFromItem item
       defaults = defaultsFromUpdates opts bodyUpdate current
       needsPrompt = isTty && (not (hasUpdates opts) || editOptInteractive opts)
-  inputs <- if needsPrompt then promptInputs projectConfig defaults else pure (toInputs defaults)
+  inputs <- if needsPrompt then promptInputs projectConfig item defaults else pure (toInputs defaults)
   applyEdits projectConfig item inputs current
   pure ExitSuccess
 
@@ -129,6 +132,7 @@ data CurrentItem = MkCurrentItem
   , currentConfidence :: !(Maybe Project.ProjectItemConfidence)
   , currentTheme :: !(Maybe Project.ProjectItemTheme)
   , currentScore :: !(Maybe Milli)
+  , currentIssueType :: !(Maybe Project.IssueType)
   }
 
 
@@ -145,6 +149,7 @@ data EditInputs = MkEditInputs
   , editDifficulty :: !(Maybe Project.ProjectItemDifficulty)
   , editConfidence :: !(Maybe Project.ProjectItemConfidence)
   , editTheme :: !(Maybe Project.ProjectItemTheme)
+  , editIssueType :: !(Maybe Project.IssueType)
   }
 
 
@@ -164,6 +169,9 @@ currentFromItem Project.MkProjectItem {..} =
     , currentConfidence = projectItemConfidence
     , currentTheme = projectItemTheme
     , currentScore = projectItemScore
+    , currentIssueType = case projectItemContent of
+        Project.ProjectItemContentIssue issue -> Project.issueContentIssueType issue
+        _ -> Nothing
     }
 
 
@@ -180,6 +188,7 @@ type EditDefaults =
   , Maybe Project.ProjectItemDifficulty
   , Maybe Project.ProjectItemConfidence
   , Maybe Project.ProjectItemTheme
+  , Maybe Project.IssueType
   )
 
 
@@ -197,11 +206,12 @@ defaultsFromUpdates MkEditOptions {..} bodyUpdate current =
   , applyMaybeUpdate editOptDifficulty (currentDifficulty current)
   , applyMaybeUpdate editOptConfidence (currentConfidence current)
   , applyMaybeUpdate editOptTheme (currentTheme current)
+  , applyMaybeUpdate editOptIssueType (currentIssueType current)
   )
 
 
 toInputs :: EditDefaults -> EditInputs
-toInputs (mTitle, mBody, assignees, status, iteration, urgency, impact, reach, size, difficulty, confidence, theme) =
+toInputs (mTitle, mBody, assignees, status, iteration, urgency, impact, reach, size, difficulty, confidence, theme, issueType) =
   MkEditInputs
     { editTitle = fromMaybe "" mTitle
     , editBody = mBody
@@ -215,6 +225,7 @@ toInputs (mTitle, mBody, assignees, status, iteration, urgency, impact, reach, s
     , editDifficulty = difficulty
     , editConfidence = confidence
     , editTheme = theme
+    , editIssueType = issueType
     }
 
 
@@ -225,10 +236,21 @@ applyEdits cfg item MkEditInputs {..} current = do
       titleChanged = editTitle /= currentTitle current
       bodyChanged = editBody /= currentBody current
       assigneesChanged = editAssignees /= currentAssignees current
-  when (titleChanged || bodyChanged) $ updateContent content editTitle editBody
+      issueTypeChanged = editIssueType /= currentIssueType current
+  -- Resolve the issue type ID when updating an issue whose issue type changed.
+  mIssueTypeId <- case (content, issueTypeChanged) of
+    (Project.ProjectItemContentIssue issue, True) -> do
+      orgTypes <- Item.Commons.getRepoOrgIssueTypes (Project.issueContentRepository issue)
+      Item.Commons.resolveIssueTypeId orgTypes editIssueType
+    _ -> pure Nothing
+  let issueTypeUpdatable = case content of
+        Project.ProjectItemContentIssue _ -> True
+        _ -> False
+      contentChanged = titleChanged || bodyChanged || (issueTypeChanged && issueTypeUpdatable)
+  when contentChanged $ updateContent content editTitle editBody mIssueTypeId
   when assigneesChanged $ updateAssignees content (currentAssignees current) editAssignees
   updates <- either die pure $ buildFieldUpdates cfg current MkEditInputs {..}
-  if null updates && not titleChanged && not bodyChanged && not assigneesChanged
+  if null updates && not contentChanged && not assigneesChanged
     then putStrLn "Nothing to update."
     else forM_ updates $ \Item.Commons.FieldUpdate {..} -> Item.Commons.updateProjectField cfg itemId fieldUpdateId fieldUpdateValue
 
@@ -244,13 +266,17 @@ promptItemId = do
     _ -> promptItemId
 
 
-promptInputs :: ProjectConfig.ProjectConfig -> EditDefaults -> IO EditInputs
-promptInputs cfg defaults = do
-  let (mTitle, mBody, assignees, status, iteration, urgency, impact, reach, size, difficulty, confidence, theme) = defaults
+promptInputs :: ProjectConfig.ProjectConfig -> Project.ProjectItem -> EditDefaults -> IO EditInputs
+promptInputs cfg item defaults = do
+  let (mTitle, mBody, assignees, status, iteration, urgency, impact, reach, size, difficulty, confidence, theme, issueType) = defaults
   let titleDefault = fromMaybe "" mTitle
   editTitle <- fromMaybe titleDefault <$> Z.Term.Prompts.text "Title" (Just titleDefault)
   editBody <- Z.Term.Prompts.multilineText "Body" mBody
   editAssignees <- Item.Commons.promptAssignees assignees
+  orgIssueTypes <- case Project.projectItemContent item of
+    Project.ProjectItemContentIssue issue -> Item.Commons.getRepoOrgIssueTypes (Project.issueContentRepository issue)
+    _ -> pure []
+  editIssueType <- Item.Commons.promptSelectOptional "Issue Type" Project.issueTypeLabel issueType (Item.Commons.matchingIssueTypes orgIssueTypes)
   editStatus <- Item.Commons.promptSelectOptional "Status" Project.projectItemStatusLabel status Z.Base.enumerate
   editIteration <- Item.Commons.promptSelectOptional "Iteration" Z.Text.tshow iteration (fmap fst (Item.Commons.projectConfigIterations cfg))
   editUrgency <- Item.Commons.promptSelectOptional "Urgency" Project.projectItemUrgencyLabel urgency Z.Base.enumerate
@@ -266,11 +292,11 @@ promptInputs cfg defaults = do
 -- * GitHub IO
 
 
-updateContent :: Project.ProjectItemContent -> T.Text -> Maybe T.Text -> IO ()
-updateContent content title body =
+updateContent :: Project.ProjectItemContent -> T.Text -> Maybe T.Text -> Maybe T.Text -> IO ()
+updateContent content title body mIssueTypeId =
   case content of
     Project.ProjectItemContentDraftIssue draft -> updateDraftIssue (Project.draftIssueContentId draft) title body
-    Project.ProjectItemContentIssue issue -> updateIssue (Project.issueContentId issue) title body
+    Project.ProjectItemContentIssue issue -> updateIssue (Project.issueContentId issue) title body mIssueTypeId
     Project.ProjectItemContentPullRequest pr -> updatePullRequest (Project.pullRequestContentId pr) title body
 
 
@@ -279,9 +305,9 @@ updateDraftIssue draftId title body =
   Commons.ghUpdateDraftIssue draftId title body >>= either die Z.Control.discard
 
 
-updateIssue :: T.Text -> T.Text -> Maybe T.Text -> IO ()
-updateIssue issueId title body =
-  Commons.ghUpdateIssue issueId title body >>= either die Z.Control.discard
+updateIssue :: T.Text -> T.Text -> Maybe T.Text -> Maybe T.Text -> IO ()
+updateIssue issueId title body mIssueTypeId =
+  Commons.ghUpdateIssue issueId title body mIssueTypeId >>= either die Z.Control.discard
 
 
 updatePullRequest :: T.Text -> T.Text -> Maybe T.Text -> IO ()
@@ -407,6 +433,7 @@ hasUpdates MkEditOptions {..} =
     , editOptDifficulty /= UpdateKeep
     , editOptConfidence /= UpdateKeep
     , editOptTheme /= UpdateKeep
+    , editOptIssueType /= UpdateKeep
     ]
 
 
