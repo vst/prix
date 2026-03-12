@@ -130,6 +130,30 @@ instance Aeson.FromJSON OrgIssueType where
 -- * GH helpers
 
 
+-- | Fetch the numeric database ID for a project item node (e.g. @PVTI_...@).
+-- Used to construct browser URLs.
+ghGetItemFullDatabaseId :: T.Text -> IO (Either String Integer)
+ghGetItemFullDatabaseId itemId = do
+  let query = $(embedStringFile "./src/Prix/extras/lookup_item_database_id.gql") :: T.Text
+  res <-
+    runProcessBLC
+      "gh"
+      [ "api"
+      , "graphql"
+      , "--field"
+      , [i|query=#{query}|]
+      , "--field"
+      , [i|id=#{itemId}|]
+      , "--jq"
+      , ".data.node.fullDatabaseId"
+      ]
+  pure $ case res of
+    Left _ -> Left [i|Failed to get database ID for item #{itemId}|]
+    Right sv -> case reads (BLC.unpack sv) of
+      [(n, _)] -> Right n
+      _ -> Left [i|Failed to parse database ID for item #{itemId}|]
+
+
 ghGetRateLimitRemaining :: IO Integer
 ghGetRateLimitRemaining = do
   res <- runProcessRead "gh" ["api", "rate_limit", "--jq", ".rate.remaining"]

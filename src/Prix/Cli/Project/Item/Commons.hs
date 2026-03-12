@@ -24,6 +24,7 @@ import qualified Prix.ProjectConfig as ProjectConfig
 import System.Exit (die)
 import System.IO (hPutStrLn, stderr)
 import qualified Zamazingo.Terminal.Prompts as Z.Term.Prompts
+import qualified Zamazingo.Text as Z.Text
 
 
 -- * Types
@@ -203,6 +204,17 @@ filterProjectConfigs (owner, number) =
   where
     matchesNumber = (==) number . ProjectConfig.projectConfigNumber
     matchesOwner = (==) owner . Commons.ownerLogin . ProjectConfig.projectConfigOwner
+
+
+-- | Build a browser URL for a project item given its numeric database ID.
+projectItemUrl :: ProjectConfig.ProjectConfig -> Integer -> T.Text
+projectItemUrl cfg dbId =
+  let ownerSegment = case Commons.ownerType (ProjectConfig.projectConfigOwner cfg) of
+        Commons.OwnerTypeUser -> "users"
+        Commons.OwnerTypeOrganization -> "orgs"
+      login = Commons.ownerLogin (ProjectConfig.projectConfigOwner cfg)
+      number = ProjectConfig.projectConfigNumber cfg
+   in "https://github.com/" <> ownerSegment <> "/" <> login <> "/projects/" <> Z.Text.tshow number <> "/?pane=issue&itemId=" <> Z.Text.tshow dbId
 
 
 projectConfigToText :: ProjectConfig.ProjectConfig -> T.Text

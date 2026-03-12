@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Prix.Cli.Project.Item.Create (
@@ -11,6 +12,7 @@ module Prix.Cli.Project.Item.Create (
 import Control.Monad (forM_, unless, when)
 import qualified Data.Aeson as Aeson
 import Data.Maybe (catMaybes, fromMaybe, isNothing)
+import Data.String.Interpolate (i)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
 import qualified Options.Applicative as OA
@@ -134,6 +136,10 @@ runCreate _cfg opts = do
       then createDraftItem projectConfig inputs assigneeIds
       else createFromNewIssue projectConfig inputs assigneeIds
   applyFieldUpdates projectConfig itemId inputs
+  mDbId <- Commons.ghGetItemFullDatabaseId itemId
+  case mDbId of
+    Right dbId -> putStrLn [i|Created: #{itemId}\nURL: #{Item.Commons.projectItemUrl projectConfig dbId}|]
+    Left _ -> putStrLn [i|Created: #{itemId}|]
   pure ExitSuccess
 
 

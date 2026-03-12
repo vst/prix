@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Prix.Cli.Project.Item.Edit (
@@ -17,6 +18,7 @@ import Data.Fixed (Milli)
 import Data.List ((\\))
 import qualified Data.List.NonEmpty as NE
 import Data.Maybe (catMaybes, fromMaybe)
+import Data.String.Interpolate (i)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
 import qualified Options.Applicative as OA
@@ -115,6 +117,10 @@ runEdit _cfg opts = do
       needsPrompt = isTty && (not (hasUpdates opts) || editOptInteractive opts)
   inputs <- if needsPrompt then promptInputs projectConfig item defaults else pure (toInputs defaults)
   applyEdits projectConfig item inputs current
+  mDbId <- Commons.ghGetItemFullDatabaseId itemId
+  case mDbId of
+    Right dbId -> putStrLn [i|Updated: #{itemId}\nURL: #{Item.Commons.projectItemUrl projectConfig dbId}|]
+    Left _ -> putStrLn [i|Updated: #{itemId}|]
   pure ExitSuccess
 
 
