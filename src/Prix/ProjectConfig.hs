@@ -46,6 +46,11 @@ instance ADC.HasCodec ProjectConfig where
         <*> ADC.requiredField "fields" "Project Fields" ADC..= projectConfigFields
 
 
+projectConfigIdent :: ProjectConfig -> (T.Text, Int)
+projectConfigIdent =
+  (,) <$> projectConfigId <*> projectConfigNumber
+
+
 -- * Project Fields
 
 

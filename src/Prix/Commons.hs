@@ -2,6 +2,8 @@
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Prix.Commons where
 
@@ -10,6 +12,8 @@ import Control.Monad (unless)
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Lazy.Char8 as BLC
+import Data.FileEmbed (embedStringFile)
+import Data.String.Interpolate (i)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
 import System.Exit (ExitCode (..), die)
@@ -117,6 +121,273 @@ ghGetRateLimitRemaining = do
     Right sv -> pure sv
 
 
+ghLookupUserId :: T.Text -> IO (Either String T.Text)
+ghLookupUserId login = do
+  let query = $(embedStringFile "./src/Prix/extras/lookup_user_id.gql") :: T.Text
+  res <-
+    runProcessBLC
+      "gh"
+      [ "api"
+      , "graphql"
+      , "--field"
+      , [i|query=#{query}|]
+      , "--field"
+      , [i|login=#{login}|]
+      , "--jq"
+      , ".data.user.id"
+      ]
+  pure $ case res of
+    Left _er -> Left [i|Failed to resolve user: #{login}|]
+    Right sv -> Right (T.strip (T.pack (BLC.unpack sv)))
+
+
+ghLookupRepoId :: T.Text -> T.Text -> IO (Either String T.Text)
+ghLookupRepoId owner name = do
+  let query = $(embedStringFile "./src/Prix/extras/lookup_repo_id.gql") :: T.Text
+  res <-
+    runProcessBLC
+      "gh"
+      [ "api"
+      , "graphql"
+      , "--field"
+      , [i|query=#{query}|]
+      , "--field"
+      , [i|owner=#{owner}|]
+      , "--field"
+      , [i|name=#{name}|]
+      , "--jq"
+      , ".data.repository.id"
+      ]
+  pure $ case res of
+    Left _er -> Left [i|Failed to resolve repo: #{owner}/#{name}|]
+    Right sv -> Right (T.strip (T.pack (BLC.unpack sv)))
+
+
+ghCreateIssue :: T.Text -> T.Text -> T.Text -> [T.Text] -> IO (Either String T.Text)
+ghCreateIssue repoId title body assigneeIds = do
+  let query = $(embedStringFile "./src/Prix/extras/create_issue.gql") :: T.Text
+  let input =
+        Aeson.object
+          [ "query" Aeson..= query
+          , "variables"
+              Aeson..= Aeson.object
+                [ "repoId" Aeson..= repoId
+                , "title" Aeson..= title
+                , "body" Aeson..= body
+                , "assigneeIds" Aeson..= assigneeIds
+                ]
+          ]
+  res <-
+    runProcessStdinBLC
+      "gh"
+      [ "api"
+      , "graphql"
+      , "--input"
+      , "-"
+      , "--jq"
+      , ".data.createIssue.issue.id"
+      ]
+      (Aeson.encode input)
+  pure $ case res of
+    Left _er -> Left [i|Failed to create issue in repo #{repoId}|]
+    Right sv -> Right (T.strip (T.pack (BLC.unpack sv)))
+
+
+ghAddContentToProject :: T.Text -> T.Text -> IO (Either String T.Text)
+ghAddContentToProject projectId contentId = do
+  let query = $(embedStringFile "./src/Prix/extras/add_content_to_project.gql") :: T.Text
+  res <-
+    runProcessBLC
+      "gh"
+      [ "api"
+      , "graphql"
+      , "--field"
+      , [i|query=#{query}|]
+      , "--field"
+      , [i|projectId=#{projectId}|]
+      , "--field"
+      , [i|contentId=#{contentId}|]
+      , "--jq"
+      , ".data.addProjectV2ItemById.item.id"
+      ]
+  pure $ case res of
+    Left _er -> Left [i|Failed to add content #{contentId} to project #{projectId}|]
+    Right sv -> Right (T.strip (T.pack (BLC.unpack sv)))
+
+
+ghUpdateProjectItemField :: Aeson.ToJSON a => T.Text -> T.Text -> T.Text -> a -> IO (Either String T.Text)
+ghUpdateProjectItemField projectId itemId fieldId value = do
+  let query = $(embedStringFile "./src/Prix/extras/update_project_item_field.gql") :: T.Text
+  let input =
+        Aeson.object
+          [ "query" Aeson..= query
+          , "variables"
+              Aeson..= Aeson.object
+                [ "projectId" Aeson..= projectId
+                , "itemId" Aeson..= itemId
+                , "fieldId" Aeson..= fieldId
+                , "value" Aeson..= value
+                ]
+          ]
+  res <-
+    runProcessStdinBLC
+      "gh"
+      [ "api"
+      , "graphql"
+      , "--input"
+      , "-"
+      , "--jq"
+      , ".data.updateProjectV2ItemFieldValue.projectV2Item.id"
+      ]
+      (Aeson.encode input)
+  pure $ case res of
+    Left err -> Left [i|Failed to update project item field #{fieldId} for item #{itemId} in project #{projectId}\n\n  #{err}|]
+    Right sv -> Right (T.strip (T.pack (BLC.unpack sv)))
+
+
+ghAddAssigneesToAssignable :: T.Text -> [T.Text] -> IO (Either String T.Text)
+ghAddAssigneesToAssignable assignableId assigneeIds = do
+  let query = $(embedStringFile "./src/Prix/extras/add_assignees_to_assignable.gql") :: T.Text
+  let input =
+        Aeson.object
+          [ "query" Aeson..= query
+          , "variables"
+              Aeson..= Aeson.object
+                [ "assignableId" Aeson..= assignableId
+                , "assigneeIds" Aeson..= assigneeIds
+                ]
+          ]
+  res <-
+    runProcessStdinBLC
+      "gh"
+      [ "api"
+      , "graphql"
+      , "--input"
+      , "-"
+      , "--jq"
+      , ".data.addAssigneesToAssignable.clientMutationId"
+      ]
+      (Aeson.encode input)
+  pure $ case res of
+    Left _er -> Left [i|Failed to add assignees to assignable #{assignableId}|]
+    Right sv -> Right (T.strip (T.pack (BLC.unpack sv)))
+
+
+ghRemoveAssigneesFromAssignable :: T.Text -> [T.Text] -> IO (Either String T.Text)
+ghRemoveAssigneesFromAssignable assignableId assigneeIds = do
+  let query = $(embedStringFile "./src/Prix/extras/remove_assignees_from_assignable.gql") :: T.Text
+  let input =
+        Aeson.object
+          [ "query" Aeson..= query
+          , "variables"
+              Aeson..= Aeson.object
+                [ "assignableId" Aeson..= assignableId
+                , "assigneeIds" Aeson..= assigneeIds
+                ]
+          ]
+  res <-
+    runProcessStdinBLC
+      "gh"
+      [ "api"
+      , "graphql"
+      , "--input"
+      , "-"
+      , "--jq"
+      , ".data.removeAssigneesFromAssignable.clientMutationId"
+      ]
+      (Aeson.encode input)
+  pure $ case res of
+    Left _er -> Left [i|Failed to remove assignees from assignable #{assignableId}|]
+    Right sv -> Right (T.strip (T.pack (BLC.unpack sv)))
+
+
+ghUpdateDraftIssue :: T.Text -> T.Text -> Maybe T.Text -> IO (Either String T.Text)
+ghUpdateDraftIssue draftId title mBody = do
+  let query = $(embedStringFile "./src/Prix/extras/update_draft_issue.gql") :: T.Text
+  let input =
+        Aeson.object
+          [ "query" Aeson..= query
+          , "variables"
+              Aeson..= Aeson.object
+                [ "draftId" Aeson..= draftId
+                , "title" Aeson..= title
+                , "body" Aeson..= mBody
+                ]
+          ]
+  res <-
+    runProcessStdinBLC
+      "gh"
+      [ "api"
+      , "graphql"
+      , "--input"
+      , "-"
+      , "--jq"
+      , ".data.updateProjectV2DraftIssue.projectItem.id"
+      ]
+      (Aeson.encode input)
+  pure $ case res of
+    Left _er -> Left [i|Failed to update draft issue #{draftId}|]
+    Right sv -> Right (T.strip (T.pack (BLC.unpack sv)))
+
+
+ghUpdateIssue :: T.Text -> T.Text -> Maybe T.Text -> IO (Either String T.Text)
+ghUpdateIssue issueId title mBody = do
+  let query = $(embedStringFile "./src/Prix/extras/update_issue.gql") :: T.Text
+  let input =
+        Aeson.object
+          [ "query" Aeson..= query
+          , "variables"
+              Aeson..= Aeson.object
+                [ "issueId" Aeson..= issueId
+                , "title" Aeson..= title
+                , "body" Aeson..= mBody
+                ]
+          ]
+  res <-
+    runProcessStdinBLC
+      "gh"
+      [ "api"
+      , "graphql"
+      , "--input"
+      , "-"
+      , "--jq"
+      , ".data.updateIssue.issue.id"
+      ]
+      (Aeson.encode input)
+  pure $ case res of
+    Left _er -> Left [i|Failed to update issue #{issueId}|]
+    Right sv -> Right (T.strip (T.pack (BLC.unpack sv)))
+
+
+ghUpdatePullRequest :: T.Text -> T.Text -> Maybe T.Text -> IO (Either String T.Text)
+ghUpdatePullRequest pullRequestId title mBody = do
+  let query = $(embedStringFile "./src/Prix/extras/update_pull_request.gql") :: T.Text
+  let input =
+        Aeson.object
+          [ "query" Aeson..= query
+          , "variables"
+              Aeson..= Aeson.object
+                [ "pullRequestId" Aeson..= pullRequestId
+                , "title" Aeson..= title
+                , "body" Aeson..= mBody
+                ]
+          ]
+  res <-
+    runProcessStdinBLC
+      "gh"
+      [ "api"
+      , "graphql"
+      , "--input"
+      , "-"
+      , "--jq"
+      , ".data.updatePullRequest.pullRequest.id"
+      ]
+      (Aeson.encode input)
+  pure $ case res of
+    Left _er -> Left [i|Failed to update pull request #{pullRequestId}|]
+    Right sv -> Right (T.strip (T.pack (BLC.unpack sv)))
+
+
 -- * Helpers
 
 
@@ -140,6 +411,19 @@ printProcessResultError label (code, out, err) = do
 runProcessBLC :: T.Text -> [T.Text] -> IO (ProcessResult BL.ByteString)
 runProcessBLC cmd args = do
   let process = TP.setStdout TP.byteStringOutput . TP.setStderr TP.byteStringOutput $ TP.proc (T.unpack cmd) (fmap T.unpack args)
+  (exitCode, out, err) <- TP.readProcess process
+  pure $ case exitCode of
+    ExitSuccess -> Right out
+    ExitFailure c -> Left (c, out, err)
+
+
+runProcessStdinBLC :: T.Text -> [T.Text] -> BL.ByteString -> IO (ProcessResult BL.ByteString)
+runProcessStdinBLC cmd args input = do
+  let process =
+        TP.setStdin (TP.byteStringInput input)
+          . TP.setStdout TP.byteStringOutput
+          . TP.setStderr TP.byteStringOutput
+          $ TP.proc (T.unpack cmd) (fmap T.unpack args)
   (exitCode, out, err) <- TP.readProcess process
   pure $ case exitCode of
     ExitSuccess -> Right out
