@@ -237,20 +237,34 @@ applyEdits cfg item MkEditInputs {..} current = do
       bodyChanged = editBody /= currentBody current
       assigneesChanged = editAssignees /= currentAssignees current
       issueTypeChanged = editIssueType /= currentIssueType current
-  -- Resolve the issue type ID when updating an issue whose issue type changed.
-  mIssueTypeId <- case (content, issueTypeChanged) of
-    (Project.ProjectItemContentIssue issue, True) -> do
-      orgTypes <- Item.Commons.getRepoOrgIssueTypes (Project.issueContentRepository issue)
-      Item.Commons.resolveIssueTypeId orgTypes editIssueType
-    _ -> pure Nothing
-  let issueTypeUpdatable = case content of
-        Project.ProjectItemContentIssue _ -> True
-        _ -> False
-      contentChanged = titleChanged || bodyChanged || (issueTypeChanged && issueTypeUpdatable)
-  when contentChanged $ updateContent content editTitle editBody mIssueTypeId
-  when assigneesChanged $ updateAssignees content (currentAssignees current) editAssignees
+  -- Apply content-specific updates, returning whether anything changed.
+  contentOrAssigneesChanged <- case content of
+    Project.ProjectItemContentDraftIssue draft -> do
+      -- Draft items: title, body, and assignees are all set in one mutation.
+      let changed = titleChanged || bodyChanged || assigneesChanged
+      when changed $ do
+        assigneeIds <- Item.Commons.resolveAssigneeIds editAssignees
+        Commons.ghUpdateDraftIssue (Project.draftIssueContentId draft) editTitle editBody assigneeIds
+          >>= either die Z.Control.discard
+      pure changed
+    Project.ProjectItemContentIssue issue -> do
+      mIssueTypeId <-
+        if issueTypeChanged
+          then do
+            orgTypes <- Item.Commons.getRepoOrgIssueTypes (Project.issueContentRepository issue)
+            Item.Commons.resolveIssueTypeId orgTypes editIssueType
+          else pure Nothing
+      let contentChanged = titleChanged || bodyChanged || issueTypeChanged
+      when contentChanged $ updateIssue (Project.issueContentId issue) editTitle editBody mIssueTypeId
+      when assigneesChanged $ updateAssignableAssignees (Project.issueContentId issue) (currentAssignees current) editAssignees
+      pure (contentChanged || assigneesChanged)
+    Project.ProjectItemContentPullRequest pr -> do
+      let contentChanged = titleChanged || bodyChanged
+      when contentChanged $ updatePullRequest (Project.pullRequestContentId pr) editTitle editBody
+      when assigneesChanged $ updateAssignableAssignees (Project.pullRequestContentId pr) (currentAssignees current) editAssignees
+      pure (contentChanged || assigneesChanged)
   updates <- either die pure $ buildFieldUpdates cfg current MkEditInputs {..}
-  if null updates && not contentChanged && not assigneesChanged
+  if null updates && not contentOrAssigneesChanged
     then putStrLn "Nothing to update."
     else forM_ updates $ \Item.Commons.FieldUpdate {..} -> Item.Commons.updateProjectField cfg itemId fieldUpdateId fieldUpdateValue
 
@@ -292,19 +306,6 @@ promptInputs cfg item defaults = do
 -- * GitHub IO
 
 
-updateContent :: Project.ProjectItemContent -> T.Text -> Maybe T.Text -> Maybe T.Text -> IO ()
-updateContent content title body mIssueTypeId =
-  case content of
-    Project.ProjectItemContentDraftIssue draft -> updateDraftIssue (Project.draftIssueContentId draft) title body
-    Project.ProjectItemContentIssue issue -> updateIssue (Project.issueContentId issue) title body mIssueTypeId
-    Project.ProjectItemContentPullRequest pr -> updatePullRequest (Project.pullRequestContentId pr) title body
-
-
-updateDraftIssue :: T.Text -> T.Text -> Maybe T.Text -> IO ()
-updateDraftIssue draftId title body =
-  Commons.ghUpdateDraftIssue draftId title body >>= either die Z.Control.discard
-
-
 updateIssue :: T.Text -> T.Text -> Maybe T.Text -> Maybe T.Text -> IO ()
 updateIssue issueId title body mIssueTypeId =
   Commons.ghUpdateIssue issueId title body mIssueTypeId >>= either die Z.Control.discard
@@ -313,14 +314,6 @@ updateIssue issueId title body mIssueTypeId =
 updatePullRequest :: T.Text -> T.Text -> Maybe T.Text -> IO ()
 updatePullRequest prId title body =
   Commons.ghUpdatePullRequest prId title body >>= either die Z.Control.discard
-
-
-updateAssignees :: Project.ProjectItemContent -> [T.Text] -> [T.Text] -> IO ()
-updateAssignees content current desired =
-  case content of
-    Project.ProjectItemContentDraftIssue _ -> die "Assignees are not supported for draft issues."
-    Project.ProjectItemContentIssue issue -> updateAssignableAssignees (Project.issueContentId issue) current desired
-    Project.ProjectItemContentPullRequest pr -> updateAssignableAssignees (Project.pullRequestContentId pr) current desired
 
 
 updateAssignableAssignees :: T.Text -> [T.Text] -> [T.Text] -> IO ()

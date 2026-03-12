@@ -8,7 +8,7 @@ module Prix.Cli.Project.Item.Create (
   runCreate,
 ) where
 
-import Control.Monad (forM_, when)
+import Control.Monad (forM_, unless, when)
 import qualified Data.Aeson as Aeson
 import Data.Maybe (catMaybes, fromMaybe, isNothing)
 import qualified Data.Text as T
@@ -31,6 +31,7 @@ import qualified Zamazingo.Text as Z.Text
 
 data CreateOptions = MkCreateOptions
   { createOptInteractive :: !Bool
+  , createOptDraft :: !Bool
   , createOptOwner :: !(Maybe T.Text)
   , createOptProjectNumber :: !(Maybe Int)
   , createOptRepo :: !(Maybe T.Text)
@@ -55,6 +56,7 @@ createOptionsParser :: OA.Parser CreateOptions
 createOptionsParser =
   MkCreateOptions
     <$> interactiveP
+    <*> draftP
     <*> ownerP
     <*> projectNumberP
     <*> repoP
@@ -73,6 +75,7 @@ createOptionsParser =
     <*> issueTypeP
   where
     interactiveP = OA.switch (OA.long "interactive" <> OA.short 'i' <> OA.help "Run in interactive mode.")
+    draftP = OA.switch (OA.long "draft" <> OA.short 'd' <> OA.help "Create a draft item (no repository required).")
     ownerP = OA.optional (T.pack <$> OA.strOption (OA.long "owner" <> OA.metavar "LOGIN" <> OA.help "Project owner login to disambiguate."))
     projectNumberP = OA.optional (OA.option OA.auto (OA.long "project" <> OA.metavar "NUMBER" <> OA.help "Project number to use."))
     repoP = OA.optional (T.pack <$> OA.strOption (OA.long "repo" <> OA.metavar "OWNER/REPO" <> OA.help "Repository for the new issue."))
@@ -98,10 +101,10 @@ runCreate _cfg opts = do
   isTty <- hIsTerminalDevice stdin
   when (createOptInteractive opts && not isTty) $ die "Interactive mode requires a TTY."
   resolvedBody <- traverse Item.Commons.resolveBodySource (createOptBodySource opts)
-  let defaults = (createOptRepo opts, createOptTitle opts, resolvedBody)
+  let isDraft = createOptDraft opts
+      defaults = (createOptRepo opts, createOptTitle opts, resolvedBody)
   projectConfigs <- Item.Commons.loadProjectConfigs
-  -- Revisit entire requiredReady and interactive logic
-  let requiredReady = requiredOptionsProvided defaults
+  let requiredReady = requiredOptionsProvided isDraft defaults
       projectIdent = (,) <$> createOptOwner opts <*> createOptProjectNumber opts
       needsProjectSelection = case projectIdent of
         Nothing -> True
@@ -110,7 +113,6 @@ runCreate _cfg opts = do
           [_] -> False
           _ -> True
       interactive = createOptInteractive opts || (isTty && (not requiredReady || needsProjectSelection))
-  -- Revisit entire projectConfig and inputs selection logic
   (projectConfig, inputs) <-
     if interactive
       then do
@@ -127,7 +129,10 @@ runCreate _cfg opts = do
         pure (selected, toInputs defaults opts)
   validateInputs inputs
   assigneeIds <- Item.Commons.resolveAssigneeIds (createAssignees inputs)
-  itemId <- createFromNewIssue projectConfig inputs assigneeIds
+  itemId <-
+    if createIsDraft inputs
+      then createDraftItem projectConfig inputs assigneeIds
+      else createFromNewIssue projectConfig inputs assigneeIds
   applyFieldUpdates projectConfig itemId inputs
   pure ExitSuccess
 
@@ -136,7 +141,8 @@ runCreate _cfg opts = do
 
 
 data CreateInputs = MkCreateInputs
-  { createRepo :: !(Maybe T.Text)
+  { createIsDraft :: !Bool
+  , createRepo :: !(Maybe T.Text)
   , createTitle :: !(Maybe T.Text)
   , createBody :: !(Maybe T.Text)
   , createAssignees :: ![T.Text]
@@ -157,7 +163,8 @@ data CreateInputs = MkCreateInputs
 toInputs :: (Maybe T.Text, Maybe T.Text, Maybe T.Text) -> CreateOptions -> CreateInputs
 toInputs (repo, title, body) MkCreateOptions {..} =
   MkCreateInputs
-    { createRepo = repo
+    { createIsDraft = createOptDraft
+    , createRepo = repo
     , createTitle = title
     , createBody = body
     , createAssignees = createOptAssignees
@@ -174,18 +181,25 @@ toInputs (repo, title, body) MkCreateOptions {..} =
     }
 
 
-requiredOptionsProvided :: (Maybe T.Text, Maybe T.Text, Maybe T.Text) -> Bool
-requiredOptionsProvided (mRepo, mTitle, _) =
-  maybe False (not . T.null) mRepo && maybe False (not . T.null) mTitle
+requiredOptionsProvided :: Bool -> (Maybe T.Text, Maybe T.Text, Maybe T.Text) -> Bool
+requiredOptionsProvided isDraft (mRepo, mTitle, _) =
+  (isDraft || maybe False (not . T.null) mRepo) && maybe False (not . T.null) mTitle
 
 
 validateInputs :: CreateInputs -> IO ()
 validateInputs MkCreateInputs {..} = do
-  when (isNothing createRepo) $ die "Repository is required."
+  unless createIsDraft . when (isNothing createRepo) $ die "Repository is required."
   when (isNothing createTitle) $ die "Title is required."
 
 
 -- * GitHub IO
+
+
+createDraftItem :: ProjectConfig.ProjectConfig -> CreateInputs -> [T.Text] -> IO T.Text
+createDraftItem cfg MkCreateInputs {..} assigneeIds = do
+  let projectId = ProjectConfig.projectConfigId cfg
+      title = fromMaybe "[Undefined Title]" createTitle
+  Commons.ghCreateDraftItem projectId title createBody assigneeIds >>= either die pure
 
 
 createFromNewIssue :: ProjectConfig.ProjectConfig -> CreateInputs -> [T.Text] -> IO T.Text
@@ -274,12 +288,22 @@ promptProjectConfig' mDef config =
 
 promptInputs :: ProjectConfig.ProjectConfig -> (Maybe T.Text, Maybe T.Text, Maybe T.Text) -> CreateOptions -> IO CreateInputs
 promptInputs cfg (repoDefault, titleDefault, bodyDefault) MkCreateOptions {..} = do
-  createRepo <- Z.Term.Prompts.text "Repository (owner/repo)" repoDefault
-  orgIssueTypes <- maybe (pure []) Item.Commons.getRepoOrgIssueTypes createRepo
+  let createIsDraft = createOptDraft
+  createRepo <-
+    if createOptDraft
+      then pure Nothing
+      else Z.Term.Prompts.text "Repository (owner/repo)" repoDefault
+  orgIssueTypes <-
+    if createOptDraft
+      then pure []
+      else maybe (pure []) Item.Commons.getRepoOrgIssueTypes createRepo
   createTitle <- Z.Term.Prompts.text "Title" titleDefault
   createBody <- Z.Term.Prompts.multilineText "Body" bodyDefault
   createAssignees <- Item.Commons.promptAssignees createOptAssignees
-  createIssueType <- Item.Commons.promptSelectOptional "Issue Type" Project.issueTypeLabel createOptIssueType (Item.Commons.matchingIssueTypes orgIssueTypes)
+  createIssueType <-
+    if createOptDraft
+      then pure Nothing
+      else Item.Commons.promptSelectOptional "Issue Type" Project.issueTypeLabel createOptIssueType (Item.Commons.matchingIssueTypes orgIssueTypes)
   createStatus <- Z.Term.Prompts.choose "Status" Project.projectItemStatusLabel createOptStatus Z.Base.enumerate
   createIteration <- Z.Term.Prompts.choose "Iteration" Z.Text.tshow createOptIteration (fmap fst (Item.Commons.projectConfigIterations cfg))
   createUrgency <- Z.Term.Prompts.choose "Urgency" Project.projectItemUrgencyLabel createOptUrgency Z.Base.enumerate

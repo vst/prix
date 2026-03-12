@@ -343,8 +343,8 @@ ghRemoveAssigneesFromAssignable assignableId assigneeIds = do
     Right sv -> Right (T.strip (T.pack (BLC.unpack sv)))
 
 
-ghUpdateDraftIssue :: T.Text -> T.Text -> Maybe T.Text -> IO (Either String T.Text)
-ghUpdateDraftIssue draftId title mBody = do
+ghUpdateDraftIssue :: T.Text -> T.Text -> Maybe T.Text -> [T.Text] -> IO (Either String T.Text)
+ghUpdateDraftIssue draftId title mBody assigneeIds = do
   let query = $(embedStringFile "./src/Prix/extras/update_draft_issue.gql") :: T.Text
   let input =
         Aeson.object
@@ -354,6 +354,7 @@ ghUpdateDraftIssue draftId title mBody = do
                 [ "draftId" Aeson..= draftId
                 , "title" Aeson..= title
                 , "body" Aeson..= mBody
+                , "assigneeIds" Aeson..= assigneeIds
                 ]
           ]
   res <-
@@ -364,11 +365,41 @@ ghUpdateDraftIssue draftId title mBody = do
       , "--input"
       , "-"
       , "--jq"
-      , ".data.updateProjectV2DraftIssue.projectItem.id"
+      , ".data.updateProjectV2DraftIssue.draftIssue.id"
       ]
       (Aeson.encode input)
   pure $ case res of
-    Left _er -> Left [i|Failed to update draft issue #{draftId}|]
+    Left _er -> Left [i|Failed to update draft issue #{draftId} #{_er}|]
+    Right sv -> Right (T.strip (T.pack (BLC.unpack sv)))
+
+
+ghCreateDraftItem :: T.Text -> T.Text -> Maybe T.Text -> [T.Text] -> IO (Either String T.Text)
+ghCreateDraftItem projectId title mBody assigneeIds = do
+  let query = $(embedStringFile "./src/Prix/extras/create_draft_item.gql") :: T.Text
+  let input =
+        Aeson.object
+          [ "query" Aeson..= query
+          , "variables"
+              Aeson..= Aeson.object
+                [ "projectId" Aeson..= projectId
+                , "title" Aeson..= title
+                , "body" Aeson..= mBody
+                , "assigneeIds" Aeson..= assigneeIds
+                ]
+          ]
+  res <-
+    runProcessStdinBLC
+      "gh"
+      [ "api"
+      , "graphql"
+      , "--input"
+      , "-"
+      , "--jq"
+      , ".data.addProjectV2DraftIssue.projectItem.id"
+      ]
+      (Aeson.encode input)
+  pure $ case res of
+    Left _er -> Left [i|Failed to create draft item in project #{projectId}: #{_er}|]
     Right sv -> Right (T.strip (T.pack (BLC.unpack sv)))
 
 

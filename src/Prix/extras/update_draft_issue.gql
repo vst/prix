@@ -1,8 +1,13 @@
-mutation ($draftId: ID!, $title: String!, $body: String) {
+mutation ($draftId: ID!, $title: String!, $body: String, $assigneeIds: [ID!]) {
   updateProjectV2DraftIssue(
-    input: { draftIssueId: $draftId, title: $title, body: $body }
+    input: {
+      draftIssueId: $draftId
+      title: $title
+      body: $body
+      assigneeIds: $assigneeIds
+    }
   ) {
-    projectItem {
+    draftIssue {
       id
     }
   }
