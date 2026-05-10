@@ -28,6 +28,12 @@
             gh-prix-project-item-list
           ];
 
+          ## Runtime dependencies required by the final packaged executable.
+          packageRuntimeInputs = [
+            pkgs.coreutils
+            pkgs.gh
+          ];
+
           ## Get our Haskell:
           thisHaskell = pkgs.haskellPackages.override {
             overrides = hself: _hsuper: {
@@ -85,7 +91,7 @@
               ];
 
               postFixup = (oldAttrs.postFixup or "") + ''
-                wrapProgram $out/bin/${package.name} --prefix PATH : ${pkgs.lib.makeBinPath scripts}
+                wrapProgram $out/bin/${package.name} --prefix PATH : ${pkgs.lib.makeBinPath (scripts ++ packageRuntimeInputs)}
               '';
             })
           );
