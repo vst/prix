@@ -6,6 +6,7 @@
 , stdenv
   ## Runtime dependencies:
 , bash
+, coreutils
 , gh
 , jq
 , ...
@@ -26,7 +27,7 @@ in
 writeShellApplication {
   inherit name;
   text = builtins.readFile ./script.sh;
-  runtimeInputs = [ data bash gh jq ];
+  runtimeInputs = [ data bash coreutils gh jq ];
   runtimeEnv = {
     GH_PRIX_PROJECT_CONFIG = "${data}/share";
   };
