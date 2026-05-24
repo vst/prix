@@ -14,6 +14,7 @@ import qualified Data.Aeson as Aeson
 import Data.Maybe (catMaybes, fromMaybe, isNothing)
 import Data.String.Interpolate (i)
 import qualified Data.Text as T
+import qualified Data.Time as Time
 import GHC.Generics (Generic)
 import qualified Options.Applicative as OA
 import qualified Prix.Cli.Project.Item.Commons as Item.Commons
@@ -42,13 +43,14 @@ data CreateOptions = MkCreateOptions
   , createOptAssignees :: ![T.Text]
   , createOptStatus :: !(Maybe Project.ProjectItemStatus)
   , createOptIteration :: !(Maybe Integer)
-  , createOptUrgency :: !(Maybe Project.ProjectItemUrgency)
+  , createOptDeadline :: !(Maybe Time.Day)
   , createOptImpact :: !(Maybe Project.ProjectItemImpact)
-  , createOptReach :: !(Maybe Project.ProjectItemReach)
-  , createOptSize :: !(Maybe Project.ProjectItemSize)
-  , createOptDifficulty :: !(Maybe Project.ProjectItemDifficulty)
+  , createOptScope :: !(Maybe Project.ProjectItemScope)
+  , createOptSeverity :: !(Maybe Project.ProjectItemSeverity)
+  , createOptRisk :: !(Maybe Project.ProjectItemRisk)
+  , createOptFootprint :: !(Maybe Project.ProjectItemFootprint)
+  , createOptComplexity :: !(Maybe Project.ProjectItemComplexity)
   , createOptConfidence :: !(Maybe Project.ProjectItemConfidence)
-  , createOptTheme :: !(Maybe Project.ProjectItemTheme)
   , createOptIssueType :: !(Maybe Project.IssueType)
   }
   deriving (Show, Eq, Generic)
@@ -67,13 +69,14 @@ createOptionsParser =
     <*> assigneesP
     <*> statusP
     <*> iterationP
-    <*> urgencyP
+    <*> deadlineP
     <*> impactP
-    <*> reachP
-    <*> sizeP
-    <*> difficultyP
+    <*> scopeP
+    <*> severityP
+    <*> riskP
+    <*> footprintP
+    <*> complexityP
     <*> confidenceP
-    <*> themeP
     <*> issueTypeP
   where
     interactiveP = OA.switch (OA.long "interactive" <> OA.short 'i' <> OA.help "Run in interactive mode.")
@@ -85,13 +88,14 @@ createOptionsParser =
     assigneesP = OA.many (T.pack <$> OA.strOption (OA.long "assignee" <> OA.metavar "LOGIN" <> OA.help "Assignee login (repeatable)."))
     statusP = OA.optional (OA.option (Item.Commons.parseEnumOption Project.projectItemStatusLabel) (OA.long "status" <> OA.metavar "STATUS" <> OA.help "Item status."))
     iterationP = OA.optional (OA.option OA.auto (OA.long "iteration" <> OA.metavar "NUMBER" <> OA.help "Iteration number."))
-    urgencyP = OA.optional (OA.option (Item.Commons.parseEnumOption Project.projectItemUrgencyLabel) (OA.long "urgency" <> OA.metavar "URGENCY" <> OA.help "Urgency level."))
+    deadlineP = OA.optional (OA.option OA.auto (OA.long "deadline" <> OA.metavar "YYYY-MM-DD" <> OA.help "Deadline date."))
     impactP = OA.optional (OA.option (Item.Commons.parseEnumOption Project.projectItemImpactLabel) (OA.long "impact" <> OA.metavar "IMPACT" <> OA.help "Impact level."))
-    reachP = OA.optional (OA.option (Item.Commons.parseEnumOption Project.projectItemReachLabel) (OA.long "reach" <> OA.metavar "REACH" <> OA.help "Reach level."))
-    sizeP = OA.optional (OA.option (Item.Commons.parseEnumOption Project.projectItemSizeLabel) (OA.long "size" <> OA.metavar "SIZE" <> OA.help "Size level."))
-    difficultyP = OA.optional (OA.option (Item.Commons.parseEnumOption Project.projectItemDifficultyLabel) (OA.long "difficulty" <> OA.metavar "DIFFICULTY" <> OA.help "Difficulty level."))
+    scopeP = OA.optional (OA.option (Item.Commons.parseEnumOption Project.projectItemScopeLabel) (OA.long "scope" <> OA.metavar "SCOPE" <> OA.help "Scope level."))
+    severityP = OA.optional (OA.option (Item.Commons.parseEnumOption Project.projectItemSeverityLabel) (OA.long "severity" <> OA.metavar "SEVERITY" <> OA.help "Severity level."))
+    riskP = OA.optional (OA.option (Item.Commons.parseEnumOption Project.projectItemRiskLabel) (OA.long "risk" <> OA.metavar "RISK" <> OA.help "Risk level."))
+    footprintP = OA.optional (OA.option (Item.Commons.parseEnumOption Project.projectItemFootprintLabel) (OA.long "footprint" <> OA.metavar "FOOTPRINT" <> OA.help "Footprint level."))
+    complexityP = OA.optional (OA.option (Item.Commons.parseEnumOption Project.projectItemComplexityLabel) (OA.long "complexity" <> OA.metavar "COMPLEXITY" <> OA.help "Complexity level."))
     confidenceP = OA.optional (OA.option (Item.Commons.parseEnumOption Project.projectItemConfidenceLabel) (OA.long "confidence" <> OA.metavar "CONFIDENCE" <> OA.help "Confidence level."))
-    themeP = OA.optional (OA.option (Item.Commons.parseEnumOption Project.projectItemThemeLabel) (OA.long "theme" <> OA.metavar "THEME" <> OA.help "Strategic theme."))
     issueTypeP = OA.optional (OA.option (Item.Commons.parseEnumOption Project.issueTypeLabel) (OA.long "issue-type" <> OA.metavar "TYPE" <> OA.help "Issue type (org repos only)."))
 
 
@@ -154,13 +158,14 @@ data CreateInputs = MkCreateInputs
   , createAssignees :: ![T.Text]
   , createStatus :: !(Maybe Project.ProjectItemStatus)
   , createIteration :: !(Maybe Integer)
-  , createUrgency :: !(Maybe Project.ProjectItemUrgency)
+  , createDeadline :: !(Maybe Time.Day)
   , createImpact :: !(Maybe Project.ProjectItemImpact)
-  , createReach :: !(Maybe Project.ProjectItemReach)
-  , createSize :: !(Maybe Project.ProjectItemSize)
-  , createDifficulty :: !(Maybe Project.ProjectItemDifficulty)
+  , createScope :: !(Maybe Project.ProjectItemScope)
+  , createSeverity :: !(Maybe Project.ProjectItemSeverity)
+  , createRisk :: !(Maybe Project.ProjectItemRisk)
+  , createFootprint :: !(Maybe Project.ProjectItemFootprint)
+  , createComplexity :: !(Maybe Project.ProjectItemComplexity)
   , createConfidence :: !(Maybe Project.ProjectItemConfidence)
-  , createTheme :: !(Maybe Project.ProjectItemTheme)
   , createIssueType :: !(Maybe Project.IssueType)
   }
   deriving (Show, Eq)
@@ -176,13 +181,14 @@ toInputs (repo, title, body) MkCreateOptions {..} =
     , createAssignees = createOptAssignees
     , createStatus = createOptStatus
     , createIteration = createOptIteration
-    , createUrgency = createOptUrgency
+    , createDeadline = createOptDeadline
     , createImpact = createOptImpact
-    , createReach = createOptReach
-    , createSize = createOptSize
-    , createDifficulty = createOptDifficulty
+    , createScope = createOptScope
+    , createSeverity = createOptSeverity
+    , createRisk = createOptRisk
+    , createFootprint = createOptFootprint
+    , createComplexity = createOptComplexity
     , createConfidence = createOptConfidence
-    , createTheme = createOptTheme
     , createIssueType = createOptIssueType
     }
 
@@ -246,16 +252,17 @@ applyFieldUpdates cfg itemId inputs = do
 buildFieldUpdates :: ProjectConfig.ProjectConfig -> CreateInputs -> Either String [Item.Commons.FieldUpdate]
 buildFieldUpdates cfg MkCreateInputs {..} = do
   status <- traverse (buildSingleSelect "Status" Project.projectItemStatusLabel) createStatus
-  urgency <- traverse (buildSingleSelect "Urgency" Project.projectItemUrgencyLabel) createUrgency
+  deadline <- traverse (buildDate "Deadline") createDeadline
   impact <- traverse (buildSingleSelect "Impact" Project.projectItemImpactLabel) createImpact
-  reach <- traverse (buildSingleSelect "Reach" Project.projectItemReachLabel) createReach
-  size <- traverse (buildSingleSelect "Size" Project.projectItemSizeLabel) createSize
-  difficulty <- traverse (buildSingleSelect "Difficulty" Project.projectItemDifficultyLabel) createDifficulty
+  scope <- traverse (buildSingleSelect "Scope" Project.projectItemScopeLabel) createScope
+  severity <- traverse (buildSingleSelect "Severity" Project.projectItemSeverityLabel) createSeverity
+  risk <- traverse (buildSingleSelect "Risk" Project.projectItemRiskLabel) createRisk
+  footprint <- traverse (buildSingleSelect "Footprint" Project.projectItemFootprintLabel) createFootprint
+  complexity <- traverse (buildSingleSelect "Complexity" Project.projectItemComplexityLabel) createComplexity
   confidence <- traverse (buildSingleSelect "Confidence" Project.projectItemConfidenceLabel) createConfidence
-  theme <- traverse (buildSingleSelect "Theme" Project.projectItemThemeLabel) createTheme
   iteration <- traverse (buildIteration "Iteration") createIteration
   score <- traverse (buildNumber "Score") computedScore
-  pure $ catMaybes [status, iteration, urgency, impact, reach, size, difficulty, confidence, theme, score]
+  pure $ catMaybes [status, iteration, deadline, impact, scope, severity, risk, footprint, complexity, confidence, score]
   where
     buildSingleSelect fieldLabel labelFn value = do
       field <- Item.Commons.requireSingleSelect cfg fieldLabel
@@ -265,18 +272,23 @@ buildFieldUpdates cfg MkCreateInputs {..} = do
       field <- Item.Commons.requireIteration cfg fieldLabel
       iterId <- Item.Commons.selectIterationId fieldLabel value (ProjectConfig.projectConfigFieldIterationConfiguration field)
       pure $ Item.Commons.FieldUpdate (ProjectConfig.projectConfigFieldIterationId field) (Aeson.object ["iterationId" Aeson..= iterId])
+    buildDate fieldLabel value = do
+      field <- Item.Commons.requireCommon cfg fieldLabel
+      Item.Commons.ensureDataType fieldLabel "DATE" (ProjectConfig.projectConfigFieldCommonDataType field)
+      pure $ Item.Commons.FieldUpdate (ProjectConfig.projectConfigFieldCommonId field) (Aeson.object ["date" Aeson..= value])
     buildNumber fieldLabel value = do
       field <- Item.Commons.requireCommon cfg fieldLabel
       Item.Commons.ensureDataType fieldLabel "NUMBER" (ProjectConfig.projectConfigFieldCommonDataType field)
       pure $ Item.Commons.FieldUpdate (ProjectConfig.projectConfigFieldCommonId field) (Aeson.object ["number" Aeson..= value])
     computedScore =
-      Project.projectItemPriority
-        <$> createUrgency
-        <*> createReach
-        <*> createImpact
+      Project.projectItemScoreEstimate
+        <$> createImpact
+        <*> createScope
+        <*> createSeverity
+        <*> createRisk
         <*> createConfidence
-        <*> createSize
-        <*> createDifficulty
+        <*> createFootprint
+        <*> createComplexity
 
 
 -- * Prompting
@@ -312,11 +324,12 @@ promptInputs cfg (repoDefault, titleDefault, bodyDefault) MkCreateOptions {..} =
       else Item.Commons.promptSelectOptional "Issue Type" Project.issueTypeLabel createOptIssueType (Item.Commons.matchingIssueTypes orgIssueTypes)
   createStatus <- Z.Term.Prompts.choose "Status" Project.projectItemStatusLabel createOptStatus Z.Base.enumerate
   createIteration <- Z.Term.Prompts.choose "Iteration" Z.Text.tshow createOptIteration (fmap fst (Item.Commons.projectConfigIterations cfg))
-  createUrgency <- Z.Term.Prompts.choose "Urgency" Project.projectItemUrgencyLabel createOptUrgency Z.Base.enumerate
+  createDeadline <- Item.Commons.promptDayOptional "Deadline" createOptDeadline
   createImpact <- Z.Term.Prompts.choose "Impact" Project.projectItemImpactLabel createOptImpact Z.Base.enumerate
-  createReach <- Z.Term.Prompts.choose "Reach" Project.projectItemReachLabel createOptReach Z.Base.enumerate
-  createSize <- Z.Term.Prompts.choose "Size" Project.projectItemSizeLabel createOptSize Z.Base.enumerate
-  createDifficulty <- Z.Term.Prompts.choose "Difficulty" Project.projectItemDifficultyLabel createOptDifficulty Z.Base.enumerate
+  createScope <- Z.Term.Prompts.choose "Scope" Project.projectItemScopeLabel createOptScope Z.Base.enumerate
+  createSeverity <- Z.Term.Prompts.choose "Severity" Project.projectItemSeverityLabel createOptSeverity Z.Base.enumerate
+  createRisk <- Z.Term.Prompts.choose "Risk" Project.projectItemRiskLabel createOptRisk Z.Base.enumerate
+  createFootprint <- Z.Term.Prompts.choose "Footprint" Project.projectItemFootprintLabel createOptFootprint Z.Base.enumerate
+  createComplexity <- Z.Term.Prompts.choose "Complexity" Project.projectItemComplexityLabel createOptComplexity Z.Base.enumerate
   createConfidence <- Z.Term.Prompts.choose "Confidence" Project.projectItemConfidenceLabel createOptConfidence Z.Base.enumerate
-  createTheme <- Z.Term.Prompts.choose "Theme" Project.projectItemThemeLabel createOptTheme Z.Base.enumerate
   pure MkCreateInputs {..}

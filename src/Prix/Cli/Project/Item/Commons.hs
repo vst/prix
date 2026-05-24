@@ -15,6 +15,7 @@ import Data.Maybe (mapMaybe)
 import Data.String.Interpolate (i)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
+import qualified Data.Time as Time
 import qualified Options.Applicative as OA
 import qualified Path as P
 import qualified Prix.Commons as Commons
@@ -63,6 +64,19 @@ promptSelectOptional _ _ mDef [] = pure mDef
 promptSelectOptional label asText mDef items = do
   mChoice <- Z.Term.Prompts.choose label asText mDef items
   pure (mChoice <|> mDef)
+
+
+promptDayOptional :: T.Text -> Maybe Time.Day -> IO (Maybe Time.Day)
+promptDayOptional label mDef = do
+  let defaultText = fmap Z.Text.tshow mDef
+  mValue <- Z.Term.Prompts.text label defaultText
+  case mValue of
+    Nothing -> pure mDef
+    Just "" -> pure mDef
+    Just raw ->
+      case readMaybeDay (T.unpack raw) of
+        Just day -> pure (Just day)
+        Nothing -> die "Invalid date. Expected YYYY-MM-DD."
 
 
 -- * Issue Types
@@ -283,7 +297,7 @@ requireSingleSelect cfg name =
   case findFieldByName name (ProjectConfig.projectConfigFields cfg) of
     Just (ProjectConfig.ProjectConfigFieldSingleSelect field) -> Right field
     Just _ -> Left ("Field " <> T.unpack name <> " has wrong type.")
-    Nothing -> Left ("Missing field " <> T.unpack name <> " in project config.")
+    Nothing -> Left (missingFieldError cfg name)
 
 
 requireIteration :: ProjectConfig.ProjectConfig -> T.Text -> Either String ProjectConfig.ProjectConfigFieldIteration
@@ -291,7 +305,7 @@ requireIteration cfg name =
   case findFieldByName name (ProjectConfig.projectConfigFields cfg) of
     Just (ProjectConfig.ProjectConfigFieldIteration field) -> Right field
     Just _ -> Left ("Field " <> T.unpack name <> " has wrong type.")
-    Nothing -> Left ("Missing field " <> T.unpack name <> " in project config.")
+    Nothing -> Left (missingFieldError cfg name)
 
 
 requireCommon :: ProjectConfig.ProjectConfig -> T.Text -> Either String ProjectConfig.ProjectConfigFieldCommon
@@ -299,7 +313,7 @@ requireCommon cfg name =
   case findFieldByName name (ProjectConfig.projectConfigFields cfg) of
     Just (ProjectConfig.ProjectConfigFieldCommon field) -> Right field
     Just _ -> Left ("Field " <> T.unpack name <> " has wrong type.")
-    Nothing -> Left ("Missing field " <> T.unpack name <> " in project config.")
+    Nothing -> Left (missingFieldError cfg name)
 
 
 ensureDataType :: T.Text -> T.Text -> T.Text -> Either String ()
@@ -358,6 +372,26 @@ readMaybeInteger s =
   case reads s of
     [(n, _)] -> Just n
     _ -> Nothing
+
+
+readMaybeDay :: String -> Maybe Time.Day
+readMaybeDay s =
+  case reads s of
+    [(d, "")] -> Just d
+    _ -> Nothing
+
+
+missingFieldError :: ProjectConfig.ProjectConfig -> T.Text -> String
+missingFieldError cfg name =
+  "Missing field "
+    <> T.unpack name
+    <> " in cached project config. Run `prix project sync` to refresh the project fields.\nAvailable fields: "
+    <> T.unpack (T.intercalate ", " (fmap fieldName (ProjectConfig.projectConfigFields cfg)))
+  where
+    fieldName = \case
+      ProjectConfig.ProjectConfigFieldCommon field -> ProjectConfig.projectConfigFieldCommonName field
+      ProjectConfig.ProjectConfigFieldIteration field -> ProjectConfig.projectConfigFieldIterationName field
+      ProjectConfig.ProjectConfigFieldSingleSelect field -> ProjectConfig.projectConfigFieldSingleSelectName field
 
 
 splitComma :: T.Text -> [T.Text]
