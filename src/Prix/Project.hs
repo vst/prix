@@ -72,13 +72,14 @@ data ProjectItem = MkProjectItem
   { projectItemId :: !T.Text
   , projectItemStatus :: !(Maybe ProjectItemStatus)
   , projectItemIteration :: !(Maybe Integer)
-  , projectItemUrgency :: !(Maybe ProjectItemUrgency)
+  , projectItemDeadline :: !(Maybe Time.Day)
   , projectItemImpact :: !(Maybe ProjectItemImpact)
-  , projectItemReach :: !(Maybe ProjectItemReach)
-  , projectItemSize :: !(Maybe ProjectItemSize)
-  , projectItemDifficulty :: !(Maybe ProjectItemDifficulty)
+  , projectItemScope :: !(Maybe ProjectItemScope)
+  , projectItemSeverity :: !(Maybe ProjectItemSeverity)
+  , projectItemRisk :: !(Maybe ProjectItemRisk)
+  , projectItemFootprint :: !(Maybe ProjectItemFootprint)
+  , projectItemComplexity :: !(Maybe ProjectItemComplexity)
   , projectItemConfidence :: !(Maybe ProjectItemConfidence)
-  , projectItemTheme :: !(Maybe ProjectItemTheme)
   , projectItemScore :: !(Maybe Milli)
   , projectItemTitle :: !T.Text
   , projectItemCreatedAt :: !Time.UTCTime
@@ -97,13 +98,14 @@ instance ADC.HasCodec ProjectItem where
         <$> ADC.requiredField "id" "Item ID" ADC..= projectItemId
         <*> ADC.requiredField "status" "Item Status" ADC..= projectItemStatus
         <*> ADC.requiredField "iteration" "Iteration ID" ADC..= projectItemIteration
-        <*> ADC.requiredField "urgency" "Urgency Level" ADC..= projectItemUrgency
+        <*> ADC.requiredField "deadline" "Deadline" ADC..= projectItemDeadline
         <*> ADC.requiredField "impact" "Impact Level" ADC..= projectItemImpact
-        <*> ADC.requiredField "reach" "Reach Level" ADC..= projectItemReach
-        <*> ADC.requiredField "size" "Size Level" ADC..= projectItemSize
-        <*> ADC.requiredField "difficulty" "Difficulty Level" ADC..= projectItemDifficulty
+        <*> ADC.requiredField "scope" "Scope Level" ADC..= projectItemScope
+        <*> ADC.requiredField "severity" "Severity Level" ADC..= projectItemSeverity
+        <*> ADC.requiredField "risk" "Risk Level" ADC..= projectItemRisk
+        <*> ADC.requiredField "footprint" "Footprint Level" ADC..= projectItemFootprint
+        <*> ADC.requiredField "complexity" "Complexity Level" ADC..= projectItemComplexity
         <*> ADC.requiredField "confidence" "Confidence Level" ADC..= projectItemConfidence
-        <*> ADC.requiredField "theme" "Strategic Theme" ADC..= projectItemTheme
         <*> ADC.requiredField "score" "Priority Score" ADC..= projectItemScore
         <*> ADC.requiredField "title" "Item Title" ADC..= projectItemTitle
         <*> ADC.requiredField "createdAt" "Creation Time" ADC..= projectItemCreatedAt
@@ -371,72 +373,6 @@ projectItemStatusColorLabel s =
   Commons.optionColorEmoji (projectItemStatusColor s) <> " " <> projectItemStatusLabel s
 
 
--- *** Urgency
-
-
--- | The urgency of an issue, which indicates how urgent it is to address the issue.
---
--- >>> minBound :: ProjectItemUrgency
--- ProjectItemUrgencyLow
--- >>> maxBound :: ProjectItemUrgency
--- ProjectItemUrgencyHigh
--- >>> [ProjectItemUrgencyLow .. ProjectItemUrgencyHigh]
--- [ProjectItemUrgencyLow,ProjectItemUrgencyMedium,ProjectItemUrgencyHigh]
---
--- __Urgency Examples:__
---
--- These are some examples of how to determine the urgency of an issue:
---
--- +-----------------------------------------+---------+-----------+
--- | Issue Type                              | Urgency | Impact    |
--- +=========================================+=========+===========+
--- | Client deadline                         | High    | Medium    |
--- +-----------------------------------------+---------+-----------+
--- | Legal compliance for upcoming audit     | High    | Critical  |
--- +-----------------------------------------+---------+-----------+
--- | Long-term platform upgrade              | Low     | High      |
--- +-----------------------------------------+---------+-----------+
--- | Minor typo in UI                        | Low     | Low       |
--- +-----------------------------------------+---------+-----------+
---
--- __Medium Urgency Examples:__
---
--- Identifying medium urgency can be tricky. Here are some examples:
---
--- +-----------------------------------------+-----------------------------------------------------------+
--- | Example                                 | Why it is Medium Urgency                                  |
--- +=========================================+===========================================================+
--- | Write customer onboarding guide         | Needed to improve retention, but not blocking sign-ups    |
--- +-----------------------------------------+-----------------------------------------------------------+
--- | Upgrade Nginx config for TLS 1.3        | Security/performance boost, but no active incidents       |
--- +-----------------------------------------+-----------------------------------------------------------+
--- | Prepare audit docs due next month       | Time-bound, but not urgent this week                      |
--- +-----------------------------------------+-----------------------------------------------------------+
--- | Add telemetry to new feature            | Helps future decisions, but feature already shipped       |
--- +-----------------------------------------+-----------------------------------------------------------+
--- | Refactor legacy utility module          | Important for long-term maintainability, but not critical |
--- +-----------------------------------------+-----------------------------------------------------------+
-data ProjectItemUrgency
-  = -- | No time pressure, can be postponed
-    ProjectItemUrgencyLow
-  | -- | Should be done this iteration or next (important but not blocking)
-    ProjectItemUrgencyMedium
-  | -- | Must be done immediately or this week (blocking, deadline)
-    ProjectItemUrgencyHigh
-  deriving (Eq, Show, Ord, Bounded, Enum)
-  deriving (Aeson.FromJSON, Aeson.ToJSON) via (ADC.Autodocodec ProjectItemUrgency)
-
-
-instance ADC.HasCodec ProjectItemUrgency where
-  codec = ADC.boundedEnumCodec projectItemUrgencyLabel
-
-
-projectItemUrgencyLabel :: ProjectItemUrgency -> T.Text
-projectItemUrgencyLabel ProjectItemUrgencyLow = "low"
-projectItemUrgencyLabel ProjectItemUrgencyMedium = "medium"
-projectItemUrgencyLabel ProjectItemUrgencyHigh = "high"
-
-
 -- *** Impact
 
 
@@ -445,9 +381,9 @@ projectItemUrgencyLabel ProjectItemUrgencyHigh = "high"
 -- >>> minBound :: ProjectItemImpact
 -- ProjectItemImpactLow
 -- >>> maxBound :: ProjectItemImpact
--- ProjectItemImpactCritical
--- >>> [ProjectItemImpactLow .. ProjectItemImpactCritical]
--- [ProjectItemImpactLow,ProjectItemImpactMedium,ProjectItemImpactHigh,ProjectItemImpactCritical]
+-- ProjectItemImpactHigh
+-- >>> [ProjectItemImpactLow .. ProjectItemImpactHigh]
+-- [ProjectItemImpactLow,ProjectItemImpactMedium,ProjectItemImpactHigh]
 data ProjectItemImpact
   = -- | Nice-to-have or speculative (e.g., minor enhancement, research)
     ProjectItemImpactLow
@@ -455,8 +391,6 @@ data ProjectItemImpact
     ProjectItemImpactMedium
   | -- | Supports a major initiative (e.g., new feature, platform upgrade)
     ProjectItemImpactHigh
-  | -- | Directly moves a core business KPI (e.g., revenue, user growth)
-    ProjectItemImpactCritical
   deriving (Eq, Show, Ord, Bounded, Enum)
   deriving (Aeson.FromJSON, Aeson.ToJSON) via (ADC.Autodocodec ProjectItemImpact)
 
@@ -469,42 +403,78 @@ projectItemImpactLabel :: ProjectItemImpact -> T.Text
 projectItemImpactLabel ProjectItemImpactLow = "low"
 projectItemImpactLabel ProjectItemImpactMedium = "medium"
 projectItemImpactLabel ProjectItemImpactHigh = "high"
-projectItemImpactLabel ProjectItemImpactCritical = "critical"
 
 
--- *** Reach
+-- *** Scope
 
 
--- | The reach of an issue, which indicates how many users, clients or stakeholders are affected by the issue.
+-- | The scope of an issue, which indicates how broadly the work crosses system
+-- or organizational boundaries.
 --
--- >>> minBound :: ProjectItemReach
--- ProjectItemReachInternal
--- >>> maxBound :: ProjectItemReach
--- ProjectItemReachWide
--- >>> [ProjectItemReachInternal .. ProjectItemReachWide]
--- [ProjectItemReachInternal,ProjectItemReachNarrow,ProjectItemReachModerate,ProjectItemReachWide]
-data ProjectItemReach
-  = -- | Affects only staff, internal systems, or non-customer
-    ProjectItemReachInternal
-  | -- | Affects a few users, a corner case, or small subset
-    ProjectItemReachNarrow
-  | -- | Affects a specific segment, team, or high-value group
-    ProjectItemReachModerate
-  | -- | Affects nearly all users, clients, or key stakeholders
-    ProjectItemReachWide
+-- >>> minBound :: ProjectItemScope
+-- ProjectItemScopeIsolated
+-- >>> maxBound :: ProjectItemScope
+-- ProjectItemScopeGlobal
+-- >>> [ProjectItemScopeIsolated .. ProjectItemScopeGlobal]
+-- [ProjectItemScopeIsolated,ProjectItemScopeConnected,ProjectItemScopeGlobal]
+data ProjectItemScope
+  = ProjectItemScopeIsolated
+  | ProjectItemScopeConnected
+  | ProjectItemScopeGlobal
   deriving (Eq, Show, Ord, Bounded, Enum)
-  deriving (Aeson.FromJSON, Aeson.ToJSON) via (ADC.Autodocodec ProjectItemReach)
+  deriving (Aeson.FromJSON, Aeson.ToJSON) via (ADC.Autodocodec ProjectItemScope)
 
 
-instance ADC.HasCodec ProjectItemReach where
-  codec = ADC.boundedEnumCodec projectItemReachLabel
+instance ADC.HasCodec ProjectItemScope where
+  codec = ADC.boundedEnumCodec projectItemScopeLabel
 
 
-projectItemReachLabel :: ProjectItemReach -> T.Text
-projectItemReachLabel ProjectItemReachInternal = "internal"
-projectItemReachLabel ProjectItemReachNarrow = "narrow"
-projectItemReachLabel ProjectItemReachModerate = "moderate"
-projectItemReachLabel ProjectItemReachWide = "wide"
+projectItemScopeLabel :: ProjectItemScope -> T.Text
+projectItemScopeLabel ProjectItemScopeIsolated = "isolated"
+projectItemScopeLabel ProjectItemScopeConnected = "connected"
+projectItemScopeLabel ProjectItemScopeGlobal = "global"
+
+
+-- *** Severity
+
+
+data ProjectItemSeverity
+  = ProjectItemSeverityLow
+  | ProjectItemSeverityMedium
+  | ProjectItemSeverityHigh
+  deriving (Eq, Show, Ord, Bounded, Enum)
+  deriving (Aeson.FromJSON, Aeson.ToJSON) via (ADC.Autodocodec ProjectItemSeverity)
+
+
+instance ADC.HasCodec ProjectItemSeverity where
+  codec = ADC.boundedEnumCodec projectItemSeverityLabel
+
+
+projectItemSeverityLabel :: ProjectItemSeverity -> T.Text
+projectItemSeverityLabel ProjectItemSeverityLow = "low"
+projectItemSeverityLabel ProjectItemSeverityMedium = "medium"
+projectItemSeverityLabel ProjectItemSeverityHigh = "high"
+
+
+-- *** Risk
+
+
+data ProjectItemRisk
+  = ProjectItemRiskLow
+  | ProjectItemRiskMedium
+  | ProjectItemRiskHigh
+  deriving (Eq, Show, Ord, Bounded, Enum)
+  deriving (Aeson.FromJSON, Aeson.ToJSON) via (ADC.Autodocodec ProjectItemRisk)
+
+
+instance ADC.HasCodec ProjectItemRisk where
+  codec = ADC.boundedEnumCodec projectItemRiskLabel
+
+
+projectItemRiskLabel :: ProjectItemRisk -> T.Text
+projectItemRiskLabel ProjectItemRiskLow = "low"
+projectItemRiskLabel ProjectItemRiskMedium = "medium"
+projectItemRiskLabel ProjectItemRiskHigh = "high"
 
 
 -- *** Confidence
@@ -513,18 +483,18 @@ projectItemReachLabel ProjectItemReachWide = "wide"
 -- | Confidence in the value of an issue, which indicates how certain we are about the value it will bring.
 --
 -- >>> minBound :: ProjectItemConfidence
--- ProjectItemConfidenceWeak
+-- ProjectItemConfidenceLow
 -- >>> maxBound :: ProjectItemConfidence
--- ProjectItemConfidenceStrong
--- >>> [ProjectItemConfidenceWeak .. ProjectItemConfidenceStrong]
--- [ProjectItemConfidenceWeak,ProjectItemConfidenceModerate,ProjectItemConfidenceStrong]
+-- ProjectItemConfidenceHigh
+-- >>> [ProjectItemConfidenceLow .. ProjectItemConfidenceHigh]
+-- [ProjectItemConfidenceLow,ProjectItemConfidenceMedium,ProjectItemConfidenceHigh]
 data ProjectItemConfidence
   = -- | Little evidence, mostly speculative or intuition-based
-    ProjectItemConfidenceWeak
+    ProjectItemConfidenceLow
   | -- | Some evidence or assumptions, with moderate uncertainty
-    ProjectItemConfidenceModerate
+    ProjectItemConfidenceMedium
   | -- | Strong data, direct user feedback, or well-supported experience
-    ProjectItemConfidenceStrong
+    ProjectItemConfidenceHigh
   deriving (Eq, Show, Ord, Bounded, Enum)
   deriving (Aeson.FromJSON, Aeson.ToJSON) via (ADC.Autodocodec ProjectItemConfidence)
 
@@ -534,321 +504,189 @@ instance ADC.HasCodec ProjectItemConfidence where
 
 
 projectItemConfidenceLabel :: ProjectItemConfidence -> T.Text
-projectItemConfidenceLabel ProjectItemConfidenceWeak = "weak"
-projectItemConfidenceLabel ProjectItemConfidenceModerate = "moderate"
-projectItemConfidenceLabel ProjectItemConfidenceStrong = "strong"
+projectItemConfidenceLabel ProjectItemConfidenceLow = "low"
+projectItemConfidenceLabel ProjectItemConfidenceMedium = "medium"
+projectItemConfidenceLabel ProjectItemConfidenceHigh = "high"
 
 
--- *** Size
+-- *** Footprint
 
 
--- | The size of a deliverable, which indicates how much work is involved in producing or changing it.
+-- | The footprint of a deliverable, which indicates how much work surface area
+-- is involved in producing or changing it.
 --
--- >>> minBound :: ProjectItemSize
--- ProjectItemSizeSmall
--- >>> maxBound :: ProjectItemSize
--- ProjectItemSizeLarge
--- >>> [ProjectItemSizeSmall .. ProjectItemSizeLarge]
--- [ProjectItemSizeSmall,ProjectItemSizeMedium,ProjectItemSizeLarge]
---
--- __Examples:__
---
--- +--------+-------+----------------------------------------------------+-------------------------------------------------+
--- | Label  | Value | Description                                        | Example Deliverables                            |
--- +========+=======+====================================================+=================================================+
--- | small  | 0     | Localized change or single-file/module             | Bug fix, config tweak, 1-page doc               |
--- +--------+-------+----------------------------------------------------+-------------------------------------------------+
--- | medium | 1     | Cohesive unit across a few components/artifacts    | CLI tool, small feature, multi-section doc      |
--- +--------+-------+----------------------------------------------------+-------------------------------------------------+
--- | large  | 2     | Cross-cutting change or multi-system deliverable   | Subsystem refactor, full workflow, new doc site |
--- +--------+-------+----------------------------------------------------+-------------------------------------------------+
---
--- __More Examples:__
---
--- +--------+-----------------------------------------------+----------------------------------+----------------------------------+
--- | Size   | Software Example                              | Docs Example                     | Ops Example                      |
--- +========+===============================================+==================================+==================================+
--- | small  | Edit config, fix bug in 1 file                | Update 1 README or page section  | Restart service, patch 1 node    |
--- +--------+-----------------------------------------------+----------------------------------+----------------------------------+
--- | medium | Add API endpoint, refactor a module           | Write new guide, revise full doc | Rework backup job, migrate DB    |
--- +--------+-----------------------------------------------+----------------------------------+----------------------------------+
--- | large  | Cross-cutting auth layer, redesign UI         | Write full doc site or playbook  | Redesign infra, deploy region    |
--- +--------+-----------------------------------------------+----------------------------------+----------------------------------+
---
--- __Tips for Estimating Size:__
---
--- * Focus on scope and boundaries of the change (not time or difficulty).
--- * Consider:
---
---     * Number of files, modules or systems touched
---     * Number of deliverables or user-facing artifacts
---     * Breadth of integration required
-data ProjectItemSize
-  = -- | Localized change or single-file/module
-    ProjectItemSizeSmall
+-- >>> minBound :: ProjectItemFootprint
+-- ProjectItemFootprintSmall
+-- >>> maxBound :: ProjectItemFootprint
+-- ProjectItemFootprintLarge
+-- >>> [ProjectItemFootprintSmall .. ProjectItemFootprintLarge]
+-- [ProjectItemFootprintSmall,ProjectItemFootprintMedium,ProjectItemFootprintLarge]
+data ProjectItemFootprint
+  = ProjectItemFootprintSmall
   | -- | A cohesive unit across a few components or artifacts
-    ProjectItemSizeMedium
+    ProjectItemFootprintMedium
   | -- | Cross-cutting change or multi-system deliverable
-    ProjectItemSizeLarge
+    ProjectItemFootprintLarge
   deriving (Eq, Show, Ord, Bounded, Enum)
-  deriving (Aeson.FromJSON, Aeson.ToJSON) via (ADC.Autodocodec ProjectItemSize)
+  deriving (Aeson.FromJSON, Aeson.ToJSON) via (ADC.Autodocodec ProjectItemFootprint)
 
 
-instance ADC.HasCodec ProjectItemSize where
-  codec = ADC.boundedEnumCodec projectItemSizeLabel
+instance ADC.HasCodec ProjectItemFootprint where
+  codec = ADC.boundedEnumCodec projectItemFootprintLabel
 
 
-projectItemSizeLabel :: ProjectItemSize -> T.Text
-projectItemSizeLabel ProjectItemSizeSmall = "small"
-projectItemSizeLabel ProjectItemSizeMedium = "medium"
-projectItemSizeLabel ProjectItemSizeLarge = "large"
+projectItemFootprintLabel :: ProjectItemFootprint -> T.Text
+projectItemFootprintLabel ProjectItemFootprintSmall = "small"
+projectItemFootprintLabel ProjectItemFootprintMedium = "medium"
+projectItemFootprintLabel ProjectItemFootprintLarge = "large"
 
 
--- *** Difficulty
+-- *** Complexity
 
 
--- | The difficulty of a task, which indicates how hard it is to reason about or execute.
+-- | The complexity of a task, which indicates how hard it is to reason about or execute.
 --
--- >>> minBound :: ProjectItemDifficulty
--- ProjectItemDifficultyEasy
--- >>> maxBound :: ProjectItemDifficulty
--- ProjectItemDifficultyHard
--- >>> [ProjectItemDifficultyEasy .. ProjectItemDifficultyHard]
--- [ProjectItemDifficultyEasy,ProjectItemDifficultyMedium,ProjectItemDifficultyHard]
---
--- __Examples:__
---
--- +--------+-------+-------------------------------------------------+---------------------------------------------------------+
--- | Label  | Value | Description                                     | Example Characteristics                                 |
--- +========+=======+=================================================+=========================================================+
--- | easy   | 0     | Straightforward, routine, low risk              | CRUD updates, static content, scripted change           |
--- +--------+-------+-------------------------------------------------+---------------------------------------------------------+
--- | medium | 1     | Requires judgment, abstraction, or coordination | Feature design, moderate refactor, multi-system insight |
--- +--------+-------+-------------------------------------------------+---------------------------------------------------------+
--- | hard   | 2     | Conceptually complex, uncertain, or high-risk   | Non-obvious design, domain modeling, async logic        |
--- +--------+-------+-------------------------------------------------+---------------------------------------------------------+
---
--- __Some More Examples:__
---
--- +------------+----------------------------------------------------+---------------------------------------------+--------------------------------------------------------+
--- | Difficulty | Software Example                                   | Docs Example                                | Ops Example                                            |
--- +============+====================================================+=============================================+========================================================+
--- | easy       | Fix typo, change constant, add a log line          | Reformat text, fix broken link, typo        | Restart service, update cron schedule                  |
--- +------------+----------------------------------------------------+---------------------------------------------+--------------------------------------------------------+
--- | medium     | Add feature with some logic, refactor a module     | Draft a new guide from known process        | Tune database, script automation, configure TLS        |
--- +------------+----------------------------------------------------+---------------------------------------------+--------------------------------------------------------+
--- | hard       | Design new abstraction, async processing, ORM swap | Document complex architecture, write policy | Migrate production DB, failover planning, IAM overhaul |
--- +------------+----------------------------------------------------+---------------------------------------------+--------------------------------------------------------+
---
--- __Tips for Estimating Difficulty:__
---
--- Think about:
---
--- - Ambiguity or novelty
--- - Number of decision points or edge cases
--- - Coordination with other people, services, or environments
---
--- Two tasks of the same size can have very different difficulty scores.
-data ProjectItemDifficulty
-  = -- | Straightforward, routine, low risk
-    ProjectItemDifficultyEasy
+-- >>> minBound :: ProjectItemComplexity
+-- ProjectItemComplexityLow
+-- >>> maxBound :: ProjectItemComplexity
+-- ProjectItemComplexityHigh
+-- >>> [ProjectItemComplexityLow .. ProjectItemComplexityHigh]
+-- [ProjectItemComplexityLow,ProjectItemComplexityMedium,ProjectItemComplexityHigh]
+data ProjectItemComplexity
+  = ProjectItemComplexityLow
   | -- | Requires judgment, abstraction, or coordination
-    ProjectItemDifficultyMedium
+    ProjectItemComplexityMedium
   | -- | Conceptually complex, uncertain, or high-risk
-    ProjectItemDifficultyHard
+    ProjectItemComplexityHigh
   deriving (Eq, Show, Ord, Bounded, Enum)
-  deriving (Aeson.FromJSON, Aeson.ToJSON) via (ADC.Autodocodec ProjectItemDifficulty)
+  deriving (Aeson.FromJSON, Aeson.ToJSON) via (ADC.Autodocodec ProjectItemComplexity)
 
 
-instance ADC.HasCodec ProjectItemDifficulty where
-  codec = ADC.boundedEnumCodec projectItemDifficultyLabel
+instance ADC.HasCodec ProjectItemComplexity where
+  codec = ADC.boundedEnumCodec projectItemComplexityLabel
 
 
-projectItemDifficultyLabel :: ProjectItemDifficulty -> T.Text
-projectItemDifficultyLabel ProjectItemDifficultyEasy = "easy"
-projectItemDifficultyLabel ProjectItemDifficultyMedium = "medium"
-projectItemDifficultyLabel ProjectItemDifficultyHard = "hard"
-
-
--- *** Theme
-
-
--- | Strategic themes help align work with business goals and priorities. Each issue
--- should be assigned to a theme that reflects its strategic value and purpose. It
--- will also inform the reach and impact of the issue.
---
--- +---------------+----------------------------------------------------------------+--------------------------------------------+
--- | Theme         | Description                                                    | Use if…                                    |
--- +===============+================================================================+============================================+
--- | @growth@      | Revenue, acquisition, onboarding, feature adoption             | Helps acquire or monetize users            |
--- +---------------+----------------------------------------------------------------+--------------------------------------------+
--- | @retention@   | Satisfaction, reliability, bug fixes, usability                | Improves user happiness or engagement      |
--- +---------------+----------------------------------------------------------------+--------------------------------------------+
--- | @efficiency@  | Cost savings, automation, internal tools, developer experience | Saves time, money, or staff effort         |
--- +---------------+----------------------------------------------------------------+--------------------------------------------+
--- | @compliance@  | Regulatory, legal, audit, privacy, certifications              | Required by law, contract, or regulation   |
--- +---------------+----------------------------------------------------------------+--------------------------------------------+
--- | @maintenance@ | Upkeep, tech debt, upgrades, refactoring                       | Keeps systems stable and sustainable       |
--- +---------------+----------------------------------------------------------------+--------------------------------------------+
--- | @learning@    | Research, prototyping, exploration                             | Explores a new idea or reduces future risk |
--- +---------------+----------------------------------------------------------------+--------------------------------------------+
-data ProjectItemTheme
-  = -- | Helps acquire or monetize users
-    ProjectItemThemeGrowth
-  | -- | Improves user happiness or engagement
-    ProjectItemThemeRetention
-  | -- | Saves time, money, or staff effort
-    ProjectItemThemeEfficiency
-  | -- | Required by law, contract, or regulation
-    ProjectItemThemeCompliance
-  | -- | Keeps systems stable and sustainable
-    ProjectItemThemeMaintenance
-  | -- | Explores a new idea or reduces future risk
-    ProjectItemThemeLearning
-  deriving (Eq, Show, Ord, Bounded, Enum)
-  deriving (Aeson.FromJSON, Aeson.ToJSON) via (ADC.Autodocodec ProjectItemTheme)
-
-
-instance ADC.HasCodec ProjectItemTheme where
-  codec = ADC.boundedEnumCodec projectItemThemeLabel
-
-
-projectItemThemeLabel :: ProjectItemTheme -> T.Text
-projectItemThemeLabel ProjectItemThemeGrowth = "growth"
-projectItemThemeLabel ProjectItemThemeRetention = "retention"
-projectItemThemeLabel ProjectItemThemeEfficiency = "efficiency"
-projectItemThemeLabel ProjectItemThemeCompliance = "compliance"
-projectItemThemeLabel ProjectItemThemeMaintenance = "maintenance"
-projectItemThemeLabel ProjectItemThemeLearning = "learning"
+projectItemComplexityLabel :: ProjectItemComplexity -> T.Text
+projectItemComplexityLabel ProjectItemComplexityLow = "low"
+projectItemComplexityLabel ProjectItemComplexityMedium = "medium"
+projectItemComplexityLabel ProjectItemComplexityHigh = "high"
 
 
 -- *** Effort
 
 
--- | The effort estimate for an issue, which indicates how much time it will take to complete.
---
--- __Guidelines:__
---
--- 1. If size or difficulty is unknown:
---
---     - Time estimate is unknown
---     - Issue is __not actionable__
---     - Create a new issue to __estimate it__
---
--- 2. 1 estimate-point is 1 pomodoro-time. Example equivalences:
--- 3. Pomodoro-time may vary from individual to individual. The default is a __focused 25-minute block__.
---
--- __Effort Estimate Formula:__
+-- | The effort estimate for an issue.
 --
 -- \[
--- \mbox{Effort Estimate} = 2^{(\mbox{Size} + \mbox{Difficulty})}
+-- \mbox{Effort Estimate} = 2^{(\mbox{Footprint} + \mbox{Complexity})}
 -- \]
 --
 -- __Quick Reference Table:__
 --
--- +------------------+----------+------------+----------+
--- | Size  Difficulty | easy (0) | medium (1) | hard (2) |
--- +==================+==========+============+==========+
--- | small (0)        | 1        | 2          | 4        |
--- +------------------+----------+------------+----------+
--- | medium (1)       | 2        | 4          | 8        |
--- +------------------+----------+------------+----------+
--- | large (2)        | 4        | 8          | 16       |
--- +------------------+----------+------------+----------+
+-- +------------------------+---------+------------+----------+
+-- | Footprint Complexity   | low (0) | medium (1) | high (2) |
+-- +========================+=========+============+==========+
+-- | small (0)              | 1       | 2          | 4        |
+-- +------------------------+---------+------------+----------+
+-- | medium (1)             | 2       | 4          | 8        |
+-- +------------------------+---------+------------+----------+
+-- | large (2)              | 4       | 8          | 16       |
+-- +------------------------+---------+------------+----------+
 --
--- __Examples:__
+-- >>> projectItemEffortEstimate ProjectItemFootprintSmall ProjectItemComplexityLow
+-- 1
+-- >>> projectItemEffortEstimate ProjectItemFootprintLarge ProjectItemComplexityHigh
+-- 16
+projectItemEffortEstimate :: ProjectItemFootprint -> ProjectItemComplexity -> Integer
+projectItemEffortEstimate footprint complexity =
+  let footprintFactor = projectItemFootprintFactor footprint
+      complexityFactor = projectItemComplexityFactor complexity
+   in 2 ^ (footprintFactor + complexityFactor)
+
+
+-- *** Score
+
+
+-- | Provisional project item score.
 --
--- +--------+----------------------------------------------------------------+
--- | Effort | Example Task                                                   |
--- +========+================================================================+
--- | 1      | Update a config, fix a typo, restart a service                 |
--- +--------+----------------------------------------------------------------+
--- | 4      | Add a new CLI command, refactor a mid-size module              |
--- +--------+----------------------------------------------------------------+
--- | 8      | Build multi-part feature across UI & backend, draft full doc   |
--- +--------+----------------------------------------------------------------+
--- | 16     | Migrate infrastructure, implement new authentication system    |
--- +--------+----------------------------------------------------------------+
-projectItemEffortEstimate :: ProjectItemSize -> ProjectItemDifficulty -> Integer
-projectItemEffortEstimate size difficulty =
-  let sizeFactor = projectItemSizeFactor size
-      difficultyFactor = projectItemDifficultyFactor difficulty
-   in 2 ^ (sizeFactor + difficultyFactor)
-
-
--- *** Priority
-
-
--- | Project item priority.
+-- This formula is intentionally provisional and subject to calibration as the
+-- new field ontology is used in practice.
 --
 -- \[
--- \mbox{Score} = \mbox{Urgency} \times \left(\frac{\mbox{Reach} \times \mbox{Impact} \times \mbox{Confidence}}{\mbox{Effort}}\right)
+-- \mbox{Score} = \frac{((\mbox{Impact} \times \mbox{Scope}) + \mbox{Severity} + \mbox{Risk}) \times \mbox{Confidence}}{\mbox{Effort}}
 -- \]
 --
--- The lowest priority can be:
+-- The lowest score can be:
 --
--- >>> projectItemPriority ProjectItemUrgencyLow ProjectItemReachInternal ProjectItemImpactLow ProjectItemConfidenceWeak ProjectItemSizeLarge ProjectItemDifficultyHard
--- 0.006
+-- >>> projectItemScoreEstimate ProjectItemImpactLow ProjectItemScopeIsolated ProjectItemSeverityLow ProjectItemRiskLow ProjectItemConfidenceLow ProjectItemFootprintLarge ProjectItemComplexityHigh
+-- 0.018
 --
--- The highest priority can be:
+-- The highest score can be:
 --
--- >>> projectItemPriority ProjectItemUrgencyHigh ProjectItemReachWide ProjectItemImpactCritical ProjectItemConfidenceStrong ProjectItemSizeSmall ProjectItemDifficultyEasy
--- 18.000
-projectItemPriority
-  :: ProjectItemUrgency
-  -> ProjectItemReach
-  -> ProjectItemImpact
+-- >>> projectItemScoreEstimate ProjectItemImpactHigh ProjectItemScopeGlobal ProjectItemSeverityHigh ProjectItemRiskHigh ProjectItemConfidenceHigh ProjectItemFootprintSmall ProjectItemComplexityLow
+-- 13.000
+projectItemScoreEstimate
+  :: ProjectItemImpact
+  -> ProjectItemScope
+  -> ProjectItemSeverity
+  -> ProjectItemRisk
   -> ProjectItemConfidence
-  -> ProjectItemSize
-  -> ProjectItemDifficulty
+  -> ProjectItemFootprint
+  -> ProjectItemComplexity
   -> Milli
-projectItemPriority urgency reach impact confidence size difficulty =
-  let urgencyFactor = projectItemUrgencyFactor urgency
-      reachFactor = projectItemReachFactor reach
-      impactFactor = projectItemImpactFactor impact
+projectItemScoreEstimate impact scope severity risk confidence footprint complexity =
+  let impactFactor = projectItemImpactFactor impact
+      scopeFactor = projectItemScopeFactor scope
+      severityFactor = projectItemSeverityFactor severity
+      riskFactor = projectItemRiskFactor risk
       confidenceFactor = projectItemConfidenceFactor confidence
-      effortEstimate = projectItemEffortEstimate size difficulty
+      effortEstimate = projectItemEffortEstimate footprint complexity
+      numerator = ((impactFactor * scopeFactor) + severityFactor + riskFactor) * confidenceFactor
    in if effortEstimate == 0
         then 0.0
-        else urgencyFactor * (reachFactor * impactFactor * confidenceFactor / fromIntegral effortEstimate)
-
-
-projectItemUrgencyFactor :: ProjectItemUrgency -> Milli
-projectItemUrgencyFactor ProjectItemUrgencyLow = 0.7
-projectItemUrgencyFactor ProjectItemUrgencyMedium = 1.0
-projectItemUrgencyFactor ProjectItemUrgencyHigh = 1.5
+        else numerator / fromIntegral effortEstimate
 
 
 projectItemImpactFactor :: ProjectItemImpact -> Milli
 projectItemImpactFactor ProjectItemImpactLow = 1
 projectItemImpactFactor ProjectItemImpactMedium = 2
 projectItemImpactFactor ProjectItemImpactHigh = 3
-projectItemImpactFactor ProjectItemImpactCritical = 4
 
 
-projectItemReachFactor :: ProjectItemReach -> Milli
-projectItemReachFactor ProjectItemReachInternal = 0.5
-projectItemReachFactor ProjectItemReachNarrow = 1.0
-projectItemReachFactor ProjectItemReachModerate = 2.0
-projectItemReachFactor ProjectItemReachWide = 3.0
+projectItemScopeFactor :: ProjectItemScope -> Milli
+projectItemScopeFactor ProjectItemScopeIsolated = 1
+projectItemScopeFactor ProjectItemScopeConnected = 2
+projectItemScopeFactor ProjectItemScopeGlobal = 3
+
+
+projectItemSeverityFactor :: ProjectItemSeverity -> Milli
+projectItemSeverityFactor ProjectItemSeverityLow = 0
+projectItemSeverityFactor ProjectItemSeverityMedium = 1
+projectItemSeverityFactor ProjectItemSeverityHigh = 2
+
+
+projectItemRiskFactor :: ProjectItemRisk -> Milli
+projectItemRiskFactor ProjectItemRiskLow = 0
+projectItemRiskFactor ProjectItemRiskMedium = 1
+projectItemRiskFactor ProjectItemRiskHigh = 2
 
 
 projectItemConfidenceFactor :: ProjectItemConfidence -> Milli
-projectItemConfidenceFactor ProjectItemConfidenceWeak = 0.3
-projectItemConfidenceFactor ProjectItemConfidenceModerate = 0.6
-projectItemConfidenceFactor ProjectItemConfidenceStrong = 1.0
+projectItemConfidenceFactor ProjectItemConfidenceLow = 0.3
+projectItemConfidenceFactor ProjectItemConfidenceMedium = 0.6
+projectItemConfidenceFactor ProjectItemConfidenceHigh = 1.0
 
 
-projectItemSizeFactor :: ProjectItemSize -> Integer
-projectItemSizeFactor ProjectItemSizeSmall = 0
-projectItemSizeFactor ProjectItemSizeMedium = 1
-projectItemSizeFactor ProjectItemSizeLarge = 2
+projectItemFootprintFactor :: ProjectItemFootprint -> Integer
+projectItemFootprintFactor ProjectItemFootprintSmall = 0
+projectItemFootprintFactor ProjectItemFootprintMedium = 1
+projectItemFootprintFactor ProjectItemFootprintLarge = 2
 
 
-projectItemDifficultyFactor :: ProjectItemDifficulty -> Integer
-projectItemDifficultyFactor ProjectItemDifficultyEasy = 0
-projectItemDifficultyFactor ProjectItemDifficultyMedium = 1
-projectItemDifficultyFactor ProjectItemDifficultyHard = 2
+projectItemComplexityFactor :: ProjectItemComplexity -> Integer
+projectItemComplexityFactor ProjectItemComplexityLow = 0
+projectItemComplexityFactor ProjectItemComplexityMedium = 1
+projectItemComplexityFactor ProjectItemComplexityHigh = 2
 
 
 -- * Auxiliary Types

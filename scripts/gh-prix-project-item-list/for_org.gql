@@ -23,9 +23,9 @@ fragment ThisProjectItem on ProjectV2Item {
       value: title
     }
   }
-  urgency: fieldValueByName(name: "Urgency") {
-    ... on ProjectV2ItemFieldSingleSelectValue {
-      value: name
+  deadline: fieldValueByName(name: "Deadline") {
+    ... on ProjectV2ItemFieldDateValue {
+      value: date
     }
   }
   impact: fieldValueByName(name: "Impact") {
@@ -33,27 +33,32 @@ fragment ThisProjectItem on ProjectV2Item {
       value: name
     }
   }
-  reach: fieldValueByName(name: "Reach") {
+  scope: fieldValueByName(name: "Scope") {
     ... on ProjectV2ItemFieldSingleSelectValue {
       value: name
     }
   }
-  size: fieldValueByName(name: "Size") {
+  severity: fieldValueByName(name: "Severity") {
     ... on ProjectV2ItemFieldSingleSelectValue {
       value: name
     }
   }
-  difficulty: fieldValueByName(name: "Difficulty") {
+  risk: fieldValueByName(name: "Risk") {
+    ... on ProjectV2ItemFieldSingleSelectValue {
+      value: name
+    }
+  }
+  footprint: fieldValueByName(name: "Footprint") {
+    ... on ProjectV2ItemFieldSingleSelectValue {
+      value: name
+    }
+  }
+  complexity: fieldValueByName(name: "Complexity") {
     ... on ProjectV2ItemFieldSingleSelectValue {
       value: name
     }
   }
   confidence: fieldValueByName(name: "Confidence") {
-    ... on ProjectV2ItemFieldSingleSelectValue {
-      value: name
-    }
-  }
-  theme: fieldValueByName(name: "Theme") {
     ... on ProjectV2ItemFieldSingleSelectValue {
       value: name
     }

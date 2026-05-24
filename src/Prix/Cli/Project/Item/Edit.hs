@@ -20,6 +20,7 @@ import qualified Data.List.NonEmpty as NE
 import Data.Maybe (catMaybes, fromMaybe)
 import Data.String.Interpolate (i)
 import qualified Data.Text as T
+import qualified Data.Time as Time
 import GHC.Generics (Generic)
 import qualified Options.Applicative as OA
 import qualified Prix.Cli.Project.Item.Commons as Item.Commons
@@ -46,13 +47,14 @@ data EditOptions = MkEditOptions
   , editOptAssignees :: !(Update [T.Text])
   , editOptStatus :: !(Update Project.ProjectItemStatus)
   , editOptIteration :: !(Update Integer)
-  , editOptUrgency :: !(Update Project.ProjectItemUrgency)
+  , editOptDeadline :: !(Update Time.Day)
   , editOptImpact :: !(Update Project.ProjectItemImpact)
-  , editOptReach :: !(Update Project.ProjectItemReach)
-  , editOptSize :: !(Update Project.ProjectItemSize)
-  , editOptDifficulty :: !(Update Project.ProjectItemDifficulty)
+  , editOptScope :: !(Update Project.ProjectItemScope)
+  , editOptSeverity :: !(Update Project.ProjectItemSeverity)
+  , editOptRisk :: !(Update Project.ProjectItemRisk)
+  , editOptFootprint :: !(Update Project.ProjectItemFootprint)
+  , editOptComplexity :: !(Update Project.ProjectItemComplexity)
   , editOptConfidence :: !(Update Project.ProjectItemConfidence)
-  , editOptTheme :: !(Update Project.ProjectItemTheme)
   , editOptIssueType :: !(Update Project.IssueType)
   }
   deriving (Show, Eq, Generic)
@@ -68,13 +70,14 @@ editOptionsParser =
     <*> assigneesP
     <*> statusP
     <*> iterationP
-    <*> urgencyP
+    <*> deadlineP
     <*> impactP
-    <*> reachP
-    <*> sizeP
-    <*> difficultyP
+    <*> scopeP
+    <*> severityP
+    <*> riskP
+    <*> footprintP
+    <*> complexityP
     <*> confidenceP
-    <*> themeP
     <*> issueTypeP
   where
     interactiveP = OA.switch (OA.long "interactive" <> OA.short 'i' <> OA.help "Run in interactive mode.")
@@ -89,13 +92,14 @@ editOptionsParser =
         ]
     statusP = updateFieldParser "status" (Item.Commons.parseEnumOption Project.projectItemStatusLabel) "Item status."
     iterationP = updateFieldParser "iteration" OA.auto "Iteration number."
-    urgencyP = updateFieldParser "urgency" (Item.Commons.parseEnumOption Project.projectItemUrgencyLabel) "Urgency level."
+    deadlineP = updateFieldParser "deadline" OA.auto "Deadline date."
     impactP = updateFieldParser "impact" (Item.Commons.parseEnumOption Project.projectItemImpactLabel) "Impact level."
-    reachP = updateFieldParser "reach" (Item.Commons.parseEnumOption Project.projectItemReachLabel) "Reach level."
-    sizeP = updateFieldParser "size" (Item.Commons.parseEnumOption Project.projectItemSizeLabel) "Size level."
-    difficultyP = updateFieldParser "difficulty" (Item.Commons.parseEnumOption Project.projectItemDifficultyLabel) "Difficulty level."
+    scopeP = updateFieldParser "scope" (Item.Commons.parseEnumOption Project.projectItemScopeLabel) "Scope level."
+    severityP = updateFieldParser "severity" (Item.Commons.parseEnumOption Project.projectItemSeverityLabel) "Severity level."
+    riskP = updateFieldParser "risk" (Item.Commons.parseEnumOption Project.projectItemRiskLabel) "Risk level."
+    footprintP = updateFieldParser "footprint" (Item.Commons.parseEnumOption Project.projectItemFootprintLabel) "Footprint level."
+    complexityP = updateFieldParser "complexity" (Item.Commons.parseEnumOption Project.projectItemComplexityLabel) "Complexity level."
     confidenceP = updateFieldParser "confidence" (Item.Commons.parseEnumOption Project.projectItemConfidenceLabel) "Confidence level."
-    themeP = updateFieldParser "theme" (Item.Commons.parseEnumOption Project.projectItemThemeLabel) "Strategic theme."
     issueTypeP = updateFieldParser "issue-type" (Item.Commons.parseEnumOption Project.issueTypeLabel) "Issue type (org repos only)."
 
 
@@ -130,13 +134,14 @@ data CurrentItem = MkCurrentItem
   , currentAssignees :: ![T.Text]
   , currentStatus :: !(Maybe Project.ProjectItemStatus)
   , currentIteration :: !(Maybe Integer)
-  , currentUrgency :: !(Maybe Project.ProjectItemUrgency)
+  , currentDeadline :: !(Maybe Time.Day)
   , currentImpact :: !(Maybe Project.ProjectItemImpact)
-  , currentReach :: !(Maybe Project.ProjectItemReach)
-  , currentSize :: !(Maybe Project.ProjectItemSize)
-  , currentDifficulty :: !(Maybe Project.ProjectItemDifficulty)
+  , currentScope :: !(Maybe Project.ProjectItemScope)
+  , currentSeverity :: !(Maybe Project.ProjectItemSeverity)
+  , currentRisk :: !(Maybe Project.ProjectItemRisk)
+  , currentFootprint :: !(Maybe Project.ProjectItemFootprint)
+  , currentComplexity :: !(Maybe Project.ProjectItemComplexity)
   , currentConfidence :: !(Maybe Project.ProjectItemConfidence)
-  , currentTheme :: !(Maybe Project.ProjectItemTheme)
   , currentScore :: !(Maybe Milli)
   , currentIssueType :: !(Maybe Project.IssueType)
   }
@@ -148,13 +153,14 @@ data EditInputs = MkEditInputs
   , editAssignees :: ![T.Text]
   , editStatus :: !(Maybe Project.ProjectItemStatus)
   , editIteration :: !(Maybe Integer)
-  , editUrgency :: !(Maybe Project.ProjectItemUrgency)
+  , editDeadline :: !(Maybe Time.Day)
   , editImpact :: !(Maybe Project.ProjectItemImpact)
-  , editReach :: !(Maybe Project.ProjectItemReach)
-  , editSize :: !(Maybe Project.ProjectItemSize)
-  , editDifficulty :: !(Maybe Project.ProjectItemDifficulty)
+  , editScope :: !(Maybe Project.ProjectItemScope)
+  , editSeverity :: !(Maybe Project.ProjectItemSeverity)
+  , editRisk :: !(Maybe Project.ProjectItemRisk)
+  , editFootprint :: !(Maybe Project.ProjectItemFootprint)
+  , editComplexity :: !(Maybe Project.ProjectItemComplexity)
   , editConfidence :: !(Maybe Project.ProjectItemConfidence)
-  , editTheme :: !(Maybe Project.ProjectItemTheme)
   , editIssueType :: !(Maybe Project.IssueType)
   }
 
@@ -167,13 +173,14 @@ currentFromItem Project.MkProjectItem {..} =
     , currentAssignees = foldMap NE.toList projectItemAssignees
     , currentStatus = projectItemStatus
     , currentIteration = projectItemIteration
-    , currentUrgency = projectItemUrgency
+    , currentDeadline = projectItemDeadline
     , currentImpact = projectItemImpact
-    , currentReach = projectItemReach
-    , currentSize = projectItemSize
-    , currentDifficulty = projectItemDifficulty
+    , currentScope = projectItemScope
+    , currentSeverity = projectItemSeverity
+    , currentRisk = projectItemRisk
+    , currentFootprint = projectItemFootprint
+    , currentComplexity = projectItemComplexity
     , currentConfidence = projectItemConfidence
-    , currentTheme = projectItemTheme
     , currentScore = projectItemScore
     , currentIssueType = case projectItemContent of
         Project.ProjectItemContentIssue issue -> Project.issueContentIssueType issue
@@ -187,13 +194,14 @@ type EditDefaults =
   , [T.Text]
   , Maybe Project.ProjectItemStatus
   , Maybe Integer
-  , Maybe Project.ProjectItemUrgency
+  , Maybe Time.Day
   , Maybe Project.ProjectItemImpact
-  , Maybe Project.ProjectItemReach
-  , Maybe Project.ProjectItemSize
-  , Maybe Project.ProjectItemDifficulty
+  , Maybe Project.ProjectItemScope
+  , Maybe Project.ProjectItemSeverity
+  , Maybe Project.ProjectItemRisk
+  , Maybe Project.ProjectItemFootprint
+  , Maybe Project.ProjectItemComplexity
   , Maybe Project.ProjectItemConfidence
-  , Maybe Project.ProjectItemTheme
   , Maybe Project.IssueType
   )
 
@@ -205,32 +213,34 @@ defaultsFromUpdates MkEditOptions {..} bodyUpdate current =
   , applyListUpdate editOptAssignees (currentAssignees current)
   , applyMaybeUpdate editOptStatus (currentStatus current)
   , applyMaybeUpdate editOptIteration (currentIteration current)
-  , applyMaybeUpdate editOptUrgency (currentUrgency current)
+  , applyMaybeUpdate editOptDeadline (currentDeadline current)
   , applyMaybeUpdate editOptImpact (currentImpact current)
-  , applyMaybeUpdate editOptReach (currentReach current)
-  , applyMaybeUpdate editOptSize (currentSize current)
-  , applyMaybeUpdate editOptDifficulty (currentDifficulty current)
+  , applyMaybeUpdate editOptScope (currentScope current)
+  , applyMaybeUpdate editOptSeverity (currentSeverity current)
+  , applyMaybeUpdate editOptRisk (currentRisk current)
+  , applyMaybeUpdate editOptFootprint (currentFootprint current)
+  , applyMaybeUpdate editOptComplexity (currentComplexity current)
   , applyMaybeUpdate editOptConfidence (currentConfidence current)
-  , applyMaybeUpdate editOptTheme (currentTheme current)
   , applyMaybeUpdate editOptIssueType (currentIssueType current)
   )
 
 
 toInputs :: EditDefaults -> EditInputs
-toInputs (mTitle, mBody, assignees, status, iteration, urgency, impact, reach, size, difficulty, confidence, theme, issueType) =
+toInputs (mTitle, mBody, assignees, status, iteration, deadline, impact, scope, severity, risk, footprint, complexity, confidence, issueType) =
   MkEditInputs
     { editTitle = fromMaybe "" mTitle
     , editBody = mBody
     , editAssignees = assignees
     , editStatus = status
     , editIteration = iteration
-    , editUrgency = urgency
+    , editDeadline = deadline
     , editImpact = impact
-    , editReach = reach
-    , editSize = size
-    , editDifficulty = difficulty
+    , editScope = scope
+    , editSeverity = severity
+    , editRisk = risk
+    , editFootprint = footprint
+    , editComplexity = complexity
     , editConfidence = confidence
-    , editTheme = theme
     , editIssueType = issueType
     }
 
@@ -288,7 +298,7 @@ promptItemId = do
 
 promptInputs :: ProjectConfig.ProjectConfig -> Project.ProjectItem -> EditDefaults -> IO EditInputs
 promptInputs cfg item defaults = do
-  let (mTitle, mBody, assignees, status, iteration, urgency, impact, reach, size, difficulty, confidence, theme, issueType) = defaults
+  let (mTitle, mBody, assignees, status, iteration, deadline, impact, scope, severity, risk, footprint, complexity, confidence, issueType) = defaults
   let titleDefault = fromMaybe "" mTitle
   editTitle <- fromMaybe titleDefault <$> Z.Term.Prompts.text "Title" (Just titleDefault)
   editBody <- Z.Term.Prompts.multilineText "Body" mBody
@@ -299,13 +309,14 @@ promptInputs cfg item defaults = do
   editIssueType <- Item.Commons.promptSelectOptional "Issue Type" Project.issueTypeLabel issueType (Item.Commons.matchingIssueTypes orgIssueTypes)
   editStatus <- Item.Commons.promptSelectOptional "Status" Project.projectItemStatusLabel status Z.Base.enumerate
   editIteration <- Item.Commons.promptSelectOptional "Iteration" Z.Text.tshow iteration (fmap fst (Item.Commons.projectConfigIterations cfg))
-  editUrgency <- Item.Commons.promptSelectOptional "Urgency" Project.projectItemUrgencyLabel urgency Z.Base.enumerate
+  editDeadline <- Item.Commons.promptDayOptional "Deadline" deadline
   editImpact <- Item.Commons.promptSelectOptional "Impact" Project.projectItemImpactLabel impact Z.Base.enumerate
-  editReach <- Item.Commons.promptSelectOptional "Reach" Project.projectItemReachLabel reach Z.Base.enumerate
-  editSize <- Item.Commons.promptSelectOptional "Size" Project.projectItemSizeLabel size Z.Base.enumerate
-  editDifficulty <- Item.Commons.promptSelectOptional "Difficulty" Project.projectItemDifficultyLabel difficulty Z.Base.enumerate
+  editScope <- Item.Commons.promptSelectOptional "Scope" Project.projectItemScopeLabel scope Z.Base.enumerate
+  editSeverity <- Item.Commons.promptSelectOptional "Severity" Project.projectItemSeverityLabel severity Z.Base.enumerate
+  editRisk <- Item.Commons.promptSelectOptional "Risk" Project.projectItemRiskLabel risk Z.Base.enumerate
+  editFootprint <- Item.Commons.promptSelectOptional "Footprint" Project.projectItemFootprintLabel footprint Z.Base.enumerate
+  editComplexity <- Item.Commons.promptSelectOptional "Complexity" Project.projectItemComplexityLabel complexity Z.Base.enumerate
   editConfidence <- Item.Commons.promptSelectOptional "Confidence" Project.projectItemConfidenceLabel confidence Z.Base.enumerate
-  editTheme <- Item.Commons.promptSelectOptional "Theme" Project.projectItemThemeLabel theme Z.Base.enumerate
   pure MkEditInputs {..}
 
 
@@ -348,21 +359,17 @@ buildFieldUpdates :: ProjectConfig.ProjectConfig -> CurrentItem -> EditInputs ->
 buildFieldUpdates cfg current MkEditInputs {..} = do
   let MkCurrentItem {..} = current
   status <- buildSingleSelect "Status" Project.projectItemStatusLabel currentStatus editStatus
-  urgency <- buildSingleSelect "Urgency" Project.projectItemUrgencyLabel currentUrgency editUrgency
+  deadline <- buildDate "Deadline" currentDeadline editDeadline
   impact <- buildSingleSelect "Impact" Project.projectItemImpactLabel currentImpact editImpact
-  reach <- buildSingleSelect "Reach" Project.projectItemReachLabel currentReach editReach
-  size <- buildSingleSelect "Size" Project.projectItemSizeLabel currentSize editSize
-  difficulty <- buildSingleSelect "Difficulty" Project.projectItemDifficultyLabel currentDifficulty editDifficulty
+  scope <- buildSingleSelect "Scope" Project.projectItemScopeLabel currentScope editScope
+  severity <- buildSingleSelect "Severity" Project.projectItemSeverityLabel currentSeverity editSeverity
+  risk <- buildSingleSelect "Risk" Project.projectItemRiskLabel currentRisk editRisk
+  footprint <- buildSingleSelect "Footprint" Project.projectItemFootprintLabel currentFootprint editFootprint
+  complexity <- buildSingleSelect "Complexity" Project.projectItemComplexityLabel currentComplexity editComplexity
   confidence <- buildSingleSelect "Confidence" Project.projectItemConfidenceLabel currentConfidence editConfidence
-  theme <- buildSingleSelect "Theme" Project.projectItemThemeLabel currentTheme editTheme
   iteration <- buildIteration "Iteration" currentIteration editIteration
-  let buildScoreUpdate scoreNow =
-        case (editUrgency, editReach, editImpact, editConfidence, editSize, editDifficulty) of
-          (Just u, Just r, Just impactVal, Just c, Just s, Just d) ->
-            buildNumber "Score" scoreNow (Just (Project.projectItemPriority u r impactVal c s d))
-          _ -> Right Nothing
   score <- buildScoreUpdate currentScore
-  pure $ catMaybes [status, iteration, urgency, impact, reach, size, difficulty, confidence, theme, score]
+  pure $ catMaybes [status, iteration, deadline, impact, scope, severity, risk, footprint, complexity, confidence, score]
   where
     buildSingleSelect fieldLabel labelFn currentVal desiredVal
       | currentVal == desiredVal = Right Nothing
@@ -396,6 +403,15 @@ buildFieldUpdates cfg current MkEditInputs {..} = do
                 Item.Commons.FieldUpdate
                   (ProjectConfig.projectConfigFieldIterationId field)
                   (Aeson.object ["iterationId" Aeson..= iterId])
+    buildDate fieldLabel currentVal desiredVal
+      | currentVal == desiredVal = Right Nothing
+      | otherwise = do
+          field <- Item.Commons.requireCommon cfg fieldLabel
+          Item.Commons.ensureDataType fieldLabel "DATE" (ProjectConfig.projectConfigFieldCommonDataType field)
+          pure . Just $
+            Item.Commons.FieldUpdate
+              (ProjectConfig.projectConfigFieldCommonId field)
+              (Aeson.object ["date" Aeson..= maybe Aeson.Null Aeson.toJSON desiredVal])
     buildNumber fieldLabel currentVal desiredVal
       | currentVal == desiredVal = Right Nothing
       | otherwise = do
@@ -405,6 +421,14 @@ buildFieldUpdates cfg current MkEditInputs {..} = do
             Item.Commons.FieldUpdate
               (ProjectConfig.projectConfigFieldCommonId field)
               (Aeson.object ["number" Aeson..= maybe Aeson.Null (Aeson.toJSON :: Milli -> Aeson.Value) desiredVal])
+    buildScoreUpdate scoreNow =
+      case (editImpact, editScope, editSeverity, editRisk, editConfidence, editFootprint, editComplexity) of
+        (Just impactVal, Just scopeVal, Just severityVal, Just riskVal, Just confidenceVal, Just footprintVal, Just complexityVal) ->
+          buildNumber
+            "Score"
+            scoreNow
+            (Just (Project.projectItemScoreEstimate impactVal scopeVal severityVal riskVal confidenceVal footprintVal complexityVal))
+        _ -> Right Nothing
 
 
 -- * Misc Helpers
@@ -425,13 +449,14 @@ hasUpdates MkEditOptions {..} =
     , editOptAssignees /= UpdateKeep
     , editOptStatus /= UpdateKeep
     , editOptIteration /= UpdateKeep
-    , editOptUrgency /= UpdateKeep
+    , editOptDeadline /= UpdateKeep
     , editOptImpact /= UpdateKeep
-    , editOptReach /= UpdateKeep
-    , editOptSize /= UpdateKeep
-    , editOptDifficulty /= UpdateKeep
+    , editOptScope /= UpdateKeep
+    , editOptSeverity /= UpdateKeep
+    , editOptRisk /= UpdateKeep
+    , editOptFootprint /= UpdateKeep
+    , editOptComplexity /= UpdateKeep
     , editOptConfidence /= UpdateKeep
-    , editOptTheme /= UpdateKeep
     , editOptIssueType /= UpdateKeep
     ]
 

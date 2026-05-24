@@ -334,13 +334,14 @@ runCommandProject _ (ProjectCommandItem (ProjectItemCommandList fmt)) = do
       , "Assignees"
       , "Status"
       , "Iteration"
-      , "Urgency"
+      , "Deadline"
       , "Impact"
-      , "Reach"
-      , "Size"
-      , "Difficulty"
+      , "Scope"
+      , "Severity"
+      , "Risk"
+      , "Footprint"
+      , "Complexity"
       , "Confidence"
-      , "Theme"
       , "Score"
       , "Content Type"
       , "Content ID"
@@ -367,13 +368,14 @@ runCommandProject _ (ProjectCommandItem (ProjectItemCommandList fmt)) = do
             , renderAssignees projectItemAssignees
             , maybe "" Project.projectItemStatusLabel projectItemStatus
             , maybe "" Z.Text.tshow projectItemIteration
-            , maybe "" Project.projectItemUrgencyLabel projectItemUrgency
+            , maybe "" Z.Text.tshow projectItemDeadline
             , maybe "" Project.projectItemImpactLabel projectItemImpact
-            , maybe "" Project.projectItemReachLabel projectItemReach
-            , maybe "" Project.projectItemSizeLabel projectItemSize
-            , maybe "" Project.projectItemDifficultyLabel projectItemDifficulty
+            , maybe "" Project.projectItemScopeLabel projectItemScope
+            , maybe "" Project.projectItemSeverityLabel projectItemSeverity
+            , maybe "" Project.projectItemRiskLabel projectItemRisk
+            , maybe "" Project.projectItemFootprintLabel projectItemFootprint
+            , maybe "" Project.projectItemComplexityLabel projectItemComplexity
             , maybe "" Project.projectItemConfidenceLabel projectItemConfidence
-            , maybe "" Project.projectItemThemeLabel projectItemTheme
             , maybe "" Z.Text.tshow projectItemScore
             , case projectItemContent of
                 Project.ProjectItemContentDraftIssue _ -> "Draft Issue"
